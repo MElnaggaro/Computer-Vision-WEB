@@ -100,51 +100,86 @@ const IntroSystem = (() => {
     // ─── Public: Signal that the 3D model has loaded ───
     const onModelLoaded = () => {
         modelLoaded = true;
+    };
 
-        // Transition from STATE 1 -> STATE 2
-        gsap.to(introStatus, {
-            opacity: 0,
-            duration: 0.6,
-            ease: 'power2.inOut',
-            onComplete: () => {
+    // ─── Master Timeline ───
+    const masterTl = gsap.timeline({ defaults: { ease: "power3.out" } });
+
+    // Initial setups
+    gsap.set(introStatus, { opacity: 0 });
+    gsap.set(mainWrapper, { opacity: 0, y: 30 });
+
+    // PHASE 1 — LOADING
+    masterTl.to(introStatus, { opacity: 1, duration: 1.2 });
+
+    // PHASE 2 — READY STATE
+    masterTl.call(() => {
+        // Pause until model is fully loaded if it isn't already
+        if (!modelLoaded) masterTl.pause();
+        
+        // Wait interval to periodically check
+        const checkLoad = setInterval(() => {
+            if (modelLoaded) {
+                clearInterval(checkLoad);
+                masterTl.resume();
+            }
+        }, 100);
+    });
+
+    masterTl.to(introStatus, { opacity: 0, duration: 0.4 })
+            .call(() => {
                 introStatus.textContent = '[SYSTEM READY — CLICK TO ENTER]';
                 introStatus.classList.add('ready');
-                gsap.to(introStatus, { opacity: 1, duration: 0.8, ease: 'power2.inOut' });
-                introScreen.style.cursor = 'pointer';
-                introScreen.addEventListener('click', startExperience, { once: true });
-            }
-        });
-    };
+            })
+            .to(introStatus, { opacity: 1, duration: 0.4 });
+
+    // WAIT FOR USER CLICK
+    masterTl.call(() => {
+        console.log("Intro loaded - waiting for click");
+        introScreen.addEventListener('click', startExperience);
+    });
 
     // ─── Click-to-Start Sequence ───
     const startExperience = () => {
+        console.log("Intro clicked - startExperience executing");
         if (isClicked) return;
         isClicked = true; // Lock input
 
-        const tl = gsap.timeline();
+        const clickTl = gsap.timeline({ defaults: { ease: "power3.out" } });
 
-        // Dispatch reveal model so Three.js can start
-        window.dispatchEvent(new CustomEvent('intro:reveal-model'));
+        // Trigger Model Fade In & Glow
+        clickTl.call(() => {
+            window.dispatchEvent(new CustomEvent('intro:reveal-model'));
+        });
 
-        // Step 1: Fade out intro overlay slowly
-        tl.to(introScreen, {
+        // STEP 1: Fade out intro
+        clickTl.to(introScreen, {
             opacity: 0,
-            duration: 1.5,
+            duration: 1.2,
             ease: 'power2.out'
-        }, 0);
+        });
 
-        // Step 2: Gradually fade IN main website
-        tl.to(mainWrapper, {
+        // STEP 2: Main hero container reveal (OVERLAP)
+        clickTl.to(mainWrapper, {
             opacity: 1,
             y: 0,
-            duration: 1.8,
+            duration: 1.6,
             ease: 'power3.out'
-        }, 0.2); // parallel, slightly offset
+        }, "-=0.8");
 
-        tl.call(() => {
+        // STEP 3: Delay and Trigger Hero Animation
+        clickTl.call(() => {
+            setTimeout(() => {
+                if (window.playHeroAnimation) {
+                    window.playHeroAnimation();
+                }
+            }, 400);
+        });
+
+        // STEP 4: Remove intro from DOM
+        clickTl.call(() => {
             introExited = true;
             cancelAnimationFrame(animId);
-            // Step 3: Remove from DOM
             introScreen.remove();
             document.body.classList.remove('intro-active');
             window.dispatchEvent(new CustomEvent('intro:complete'));

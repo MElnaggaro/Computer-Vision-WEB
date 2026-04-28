@@ -167,16 +167,16 @@
     window.addEventListener('intro:reveal-model', () => {
         modelGroup.visible = true;
 
-        // Fade in model over 2s
+        // Fade in model (1.8s)
         const fadeObj = { opacity: 0 };
         gsap.to(fadeObj, {
             opacity: 1,
-            duration: 2,
+            duration: 1.8,
             ease: 'power2.out',
             onUpdate: () => setModelOpacity(fadeObj.opacity)
         });
 
-        // Glow pulse — animate lights intensity (yoyo)
+        // Glow pulse — animate lights intensity (yoyo, overlaps)
         gsap.to(bluePoint, {
             intensity: 4,
             duration: 1.2,

@@ -68,6 +68,16 @@ const updateCursorOutline = () => {
 };
 updateCursorOutline();
 
+// Click scale effect
+window.addEventListener('mousedown', () => {
+    gsap.to(cursorDot, { scale: 0.6, duration: 0.15, ease: 'power2.out' });
+    gsap.to(cursorOutline, { scale: 0.8, duration: 0.15, ease: 'power2.out' });
+});
+window.addEventListener('mouseup', () => {
+    gsap.to(cursorDot, { scale: 1, duration: 0.15, ease: 'power2.out' });
+    gsap.to(cursorOutline, { scale: 1, duration: 0.15, ease: 'power2.out' });
+});
+
 // Hover effects
 hoverElements.forEach(el => {
     el.addEventListener('mouseenter', () => {
@@ -220,16 +230,66 @@ animateBgParticles();
 // ============================================
 // 4. GSAP SCROLL ANIMATIONS
 // ============================================
+
+// ─── Controlled Hero Animation ───
+let heroPlayed = false;
+
+window.playHeroAnimation = () => {
+    if (heroPlayed) return;
+    heroPlayed = true;
+
+    const tl = gsap.timeline();
+
+    tl.fromTo(".hero .badge", {
+        opacity: 0,
+        y: 20
+    }, {
+        opacity: 1,
+        y: 0,
+        duration: 0.6,
+        ease: "power3.out"
+    })
+    .fromTo(".hero .hero-title", {
+        opacity: 0,
+        y: 30
+    }, {
+        opacity: 1,
+        y: 0,
+        duration: 0.8,
+        ease: "power3.out"
+    }, "-=0.4")
+    .fromTo(".hero .hero-subtitle", {
+        opacity: 0,
+        y: 30
+    }, {
+        opacity: 1,
+        y: 0,
+        duration: 0.8,
+        ease: "power3.out"
+    }, "-=0.5")
+    .fromTo(".hero .hero-actions", {
+        opacity: 0,
+        y: 20
+    }, {
+        opacity: 1,
+        y: 0,
+        duration: 0.6,
+        ease: "power3.out"
+    }, "-=0.4")
+    .fromTo(".hero .scroll-indicator", {
+        opacity: 0,
+        y: 20
+    }, {
+        opacity: 0.6,
+        y: 0,
+        duration: 0.8,
+        ease: "power3.out"
+    }, "-=0.4");
+};
+
 // Animations are deferred until the intro completes
 
 window.addEventListener('intro:complete', () => {
-
-    // ─── Hero fade-in ───
-    const introTl = gsap.timeline();
-    introTl.fromTo('.hero .fade-up',
-        { y: 50, opacity: 0 },
-        { y: 0, opacity: 1, duration: 1, stagger: 0.15, ease: 'power3.out', delay: 0.2 }
-    );
 
     // ─── Features Section ───
     gsap.fromTo('.feature-card',
