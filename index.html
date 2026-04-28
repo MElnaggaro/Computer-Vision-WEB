@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Classroom Assistant | AI-Powered Education</title>
+    <meta name="description" content="AI-powered system for attendance, emotion analysis, and intelligent interaction in the classroom.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Libraries -->
+    <!-- GSAP & ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <!-- Lenis for smooth scrolling -->
+    <script src="https://unpkg.com/@studio-freight/lenis@1.0.39/dist/lenis.min.js"></script>
+</head>
+<body>
+
+    <!-- Container for future 3D / Three.js integration -->
+    <div id="three-container"></div>
+
+    <!-- Animated Dynamic Background -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-outline"></div>
+
+    <!-- Main Smooth Scrolling Container -->
+    <main id="smooth-wrapper">
+        <div id="smooth-content">
+
+            <!-- Hero Section -->
+            <section class="hero" id="hero">
+                <div class="hero-content">
+                    <div class="badge fade-up">V 1.0 BETA</div>
+                    <h1 class="hero-title fade-up">Smart Classroom<br><span class="gradient-text">Assistant</span></h1>
+                    <p class="hero-subtitle fade-up">
+                        AI-powered system for automated attendance, emotion analysis, and intelligent interaction to elevate the educational experience.
+                    </p>
+                    <div class="hero-actions fade-up">
+                        <a href="#demo" class="btn btn-primary" data-cursor="hover">See Demo</a>
+                        <a href="#features" class="btn btn-secondary" data-cursor="hover">Explore Features</a>
+                    </div>
+                </div>
+                <!-- Scroll indicator -->
+                <div class="scroll-indicator fade-up">
+                    <div class="mouse"></div>
+                    <span>Scroll</span>
+                </div>
+            </section>
+
+            <!-- Features / Modules Section -->
+            <section class="features" id="features">
+                <div class="section-header">
+                    <h2 class="section-title">Core Modules</h2>
+                    <p class="section-subtitle">Powered by advanced machine learning models</p>
+                </div>
+                <div class="features-grid">
+                    <!-- Feature 1 -->
+                    <div class="feature-card glass-panel" data-cursor="hover">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        </div>
+                        <h3>Computer Vision</h3>
+                        <p>Real-time face recognition and emotion detection to track student presence and engagement levels autonomously.</p>
+                        <div class="card-glow"></div>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="feature-card glass-panel" data-cursor="hover">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                        </div>
+                        <h3>Speech Recognition</h3>
+                        <p>High-accuracy voice-to-text transcription captures lectures and student queries seamlessly without manual input.</p>
+                        <div class="card-glow"></div>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="feature-card glass-panel" data-cursor="hover">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                        </div>
+                        <h3>NLP Engine</h3>
+                        <p>Intelligent question classification and semantic analysis to provide instant context-aware responses and insights.</p>
+                        <div class="card-glow"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workflow Section -->
+            <section class="workflow" id="workflow">
+                <div class="section-header">
+                    <h2 class="section-title">System Pipeline</h2>
+                    <p class="section-subtitle">How data flows from the classroom to actionable insights</p>
+                </div>
+                <div class="workflow-container">
+                    <div class="workflow-nodes">
+                        <div class="workflow-node" data-cursor="hover">
+                            <div class="node-icon">👤</div>
+                            <div class="node-label">Student</div>
+                        </div>
+                        <div class="workflow-connector">
+                            <div class="connector-line"></div>
+                            <div class="connector-particle"></div>
+                        </div>
+                        <div class="workflow-node" data-cursor="hover">
+                            <div class="node-icon">📹</div>
+                            <div class="node-label">Camera/Mic</div>
+                        </div>
+                        <div class="workflow-connector">
+                            <div class="connector-line"></div>
+                            <div class="connector-particle"></div>
+                        </div>
+                        <div class="workflow-node ai-node glass-panel" data-cursor="hover">
+                            <div class="node-icon">🧠</div>
+                            <div class="node-label">AI Engine</div>
+                        </div>
+                        <div class="workflow-connector">
+                            <div class="connector-line"></div>
+                            <div class="connector-particle"></div>
+                        </div>
+                        <div class="workflow-node" data-cursor="hover">
+                            <div class="node-icon">📊</div>
+                            <div class="node-label">Insights</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Experience / Impact Section -->
+            <section class="impact" id="impact">
+                <div class="impact-content">
+                    <h2 class="section-title">Elevating the Educational Experience</h2>
+                    <div class="impact-list">
+                        <div class="impact-item glass-panel">
+                            <div class="impact-number gradient-text">01</div>
+                            <div class="impact-details">
+                                <h4>Automated Attendance</h4>
+                                <p>Save hours of administrative work by automatically tracking student presence via facial recognition.</p>
+                            </div>
+                        </div>
+                        <div class="impact-item glass-panel">
+                            <div class="impact-number gradient-text">02</div>
+                            <div class="impact-details">
+                                <h4>Better Engagement</h4>
+                                <p>Monitor the overall mood and attentiveness of the room to adjust teaching pace dynamically.</p>
+                            </div>
+                        </div>
+                        <div class="impact-item glass-panel">
+                            <div class="impact-number gradient-text">03</div>
+                            <div class="impact-details">
+                                <h4>Smart Analytics</h4>
+                                <p>Gain comprehensive dashboards analyzing student participation and understanding over time.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CTA Section -->
+            <section class="cta" id="demo">
+                <div class="cta-box glass-panel">
+                    <h2 class="cta-title">Ready to upgrade your classroom?</h2>
+                    <p class="cta-subtitle">Experience the future of education with our smart assistant.</p>
+                    <a href="#" class="btn btn-primary btn-large" data-cursor="hover">Launch Interactive Demo</a>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p>&copy; 2026 Smart Classroom Assistant. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="#" data-cursor="hover">Privacy Policy</a>
+                    <a href="#" data-cursor="hover">Terms of Service</a>
+                </div>
+            </footer>
+
+        </div>
+    </main>
+
+    <!-- Application Logic -->
+    <script src="script.js"></script>
+</body>
+</html>
