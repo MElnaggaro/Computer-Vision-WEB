@@ -87,6 +87,9 @@
 
     // ModelGroup separates scroll transforms from idle animations
     const modelGroup = new THREE.Group();
+    const parallaxGroup = new THREE.Group();
+    modelGroup.add(parallaxGroup);
+    
     modelGroup.visible = false;   // Hidden until intro reveal
     scene.add(modelGroup);
 
@@ -102,13 +105,13 @@
             const center = box.getCenter(new THREE.Vector3());
             model.position.set(-center.x, -center.y, -center.z);
 
-            // Scale up for visual impact
+            // Scale up for visual impact (increased by ~20% for hero presence)
             const size = box.getSize(new THREE.Vector3());
             const maxDim = Math.max(size.x, size.y, size.z);
-            const desiredScale = 2.5 / maxDim; // Adjust so model fills ~2.5 units
+            const desiredScale = (2.5 / maxDim) * 1.2; 
             model.scale.setScalar(desiredScale);
 
-            modelGroup.add(model);
+            parallaxGroup.add(model);
 
             // Play embedded animations
             if (gltf.animations && gltf.animations.length > 0) {
@@ -200,7 +203,7 @@
     const states = [
         {
             id: "hero",
-            position: { x: -1.5, y: 0, z: 2 },
+            position: { x: -1.8, y: 0, z: 2 }, // LEFT side
             rotation: { x: 0, y: 0.5, z: 0 }
         },
         {
@@ -332,12 +335,11 @@
         mouseCurrent.x += (mouseTarget.x - mouseCurrent.x) * MOUSE_LERP;
         mouseCurrent.y += (mouseTarget.y - mouseCurrent.y) * MOUSE_LERP;
 
-        if (modelGroup && modelGroup.visible) {
-            // Apply mouse rotation offset to the model group
-            // These are additive to the GSAP-driven base rotation
-            modelGroup.rotation.x += (mouseCurrent.y * MOUSE_RANGE - modelGroup.rotation.x) * 0.01;
-            // Y axis mouse is handled via a slight offset — we don't overwrite GSAP
-            // Instead we animate a subtle position shift
+        if (parallaxGroup && modelGroup.visible) {
+            // Apply mouse rotation offset to the parallax group
+            // This is additive to the continuous rotation on the model
+            parallaxGroup.rotation.x += (mouseCurrent.y * MOUSE_RANGE - parallaxGroup.rotation.x) * 0.1;
+            parallaxGroup.rotation.y += (mouseCurrent.x * MOUSE_RANGE - parallaxGroup.rotation.y) * 0.1;
         }
 
         // ─── Animate accent lights subtly ───

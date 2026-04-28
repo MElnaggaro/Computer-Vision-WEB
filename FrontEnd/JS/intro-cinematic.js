@@ -1,12 +1,5 @@
 // ============================================
-// CINEMATIC INTRO SYSTEM
-// ============================================
-// Manages the fullscreen intro overlay:
-//   1. Ambient particle animation
-//   2. Loading state → Ready state
-//   3. Click-to-start interaction
-//   4. Model reveal + title sequence
-//   5. Smooth exit transition
+// CINEMATIC INTRO SYSTEM (MINIMAL & CLEAN)
 // ============================================
 
 const IntroSystem = (() => {
@@ -14,223 +7,149 @@ const IntroSystem = (() => {
     const introScreen   = document.getElementById('intro-screen');
     const introCanvas   = document.getElementById('intro-particles');
     const introStatus   = document.getElementById('intro-status');
-    const introTitle    = document.getElementById('intro-title');
-    const introLoader   = document.getElementById('intro-loader');
     const introCtx      = introCanvas.getContext('2d');
+    const mainWrapper   = document.getElementById('smooth-wrapper');
 
     // ─── State ───
     let modelLoaded  = false;
     let introExited  = false;
-    let introParticles = [];
-    const PARTICLE_COUNT = 80;
+    let particles = [];
+    let isClicked = false;
+    
+    // Initial State of Main Website
+    gsap.set(mainWrapper, { opacity: 0, y: 20 });
 
     // Lock scroll during intro
     document.body.classList.add('intro-active');
 
-    // ─── Intro Particle System ───
-    class IntroParticle {
-        constructor() {
-            this.reset();
-        }
+    // Mouse tracking for background parallax
+    let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    window.addEventListener('mousemove', (e) => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+    });
 
-        reset() {
+    // ─── Background Particle System ───
+    class Particle {
+        constructor() {
             this.x = Math.random() * introCanvas.width;
             this.y = Math.random() * introCanvas.height;
-            this.size = Math.random() * 2.5 + 0.5;
-            this.speedX = (Math.random() - 0.5) * 0.4;
-            this.speedY = (Math.random() - 0.5) * 0.4;
-            this.opacity = Math.random() * 0.5 + 0.1;
-            // Random blue/purple color
-            this.hue = Math.random() > 0.5 ? 240 : 270;
-            this.saturation = 60 + Math.random() * 30;
-            this.lightness  = 50 + Math.random() * 20;
+            this.size = Math.random() * 1.5 + 0.5;
+            this.vx = (Math.random() - 0.5) * 0.15;
+            this.vy = (Math.random() - 0.5) * 0.15;
+            this.baseAlpha = Math.random() * 0.3 + 0.05;
         }
-
         update() {
-            this.x += this.speedX;
-            this.y += this.speedY;
+            // Subtle reaction to mouse
+            const dx = mouse.x - this.x;
+            const dy = mouse.y - this.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < 150) {
+                this.x -= dx * 0.0003;
+                this.y -= dy * 0.0003;
+            }
 
-            // Wrap around edges
+            this.x += this.vx;
+            this.y += this.vy;
+
             if (this.x < 0) this.x = introCanvas.width;
             if (this.x > introCanvas.width) this.x = 0;
             if (this.y < 0) this.y = introCanvas.height;
             if (this.y > introCanvas.height) this.y = 0;
         }
-
         draw() {
             introCtx.beginPath();
             introCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            introCtx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${this.opacity})`;
-            introCtx.fill();
-
-            // Glow effect
-            introCtx.beginPath();
-            introCtx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
-            introCtx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${this.opacity * 0.15})`;
+            introCtx.fillStyle = `rgba(255, 255, 255, ${this.baseAlpha})`;
             introCtx.fill();
         }
     }
 
-    // ─── Resize Canvas ───
-    const resizeIntroCanvas = () => {
-        introCanvas.width = window.innerWidth;
-        introCanvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', resizeIntroCanvas);
-    resizeIntroCanvas();
-
-    // ─── Init Particles ───
-    const initIntroParticles = () => {
-        introParticles = [];
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-            introParticles.push(new IntroParticle());
+    const initParticles = () => {
+        particles = [];
+        for (let i = 0; i < 50; i++) {
+            particles.push(new Particle());
         }
     };
 
-    // ─── Draw Connections ───
-    const drawConnections = () => {
-        for (let i = 0; i < introParticles.length; i++) {
-            for (let j = i + 1; j < introParticles.length; j++) {
-                const dx = introParticles[i].x - introParticles[j].x;
-                const dy = introParticles[i].y - introParticles[j].y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < 120) {
-                    introCtx.beginPath();
-                    introCtx.moveTo(introParticles[i].x, introParticles[i].y);
-                    introCtx.lineTo(introParticles[j].x, introParticles[j].y);
-                    introCtx.strokeStyle = `rgba(79, 70, 229, ${0.06 * (1 - distance / 120)})`;
-                    introCtx.lineWidth = 0.5;
-                    introCtx.stroke();
-                }
-            }
+    const resize = () => {
+        if(introCanvas) {
+            introCanvas.width = window.innerWidth;
+            introCanvas.height = window.innerHeight;
         }
     };
+    window.addEventListener('resize', resize);
+    resize();
+    initParticles();
 
-    // ─── Animate Intro Particles ───
-    let introAnimId;
-    const animateIntroParticles = () => {
+    let animId;
+    const animate = () => {
         if (introExited) return;
-
         introCtx.clearRect(0, 0, introCanvas.width, introCanvas.height);
-
-        // Central radial gradient for depth
-        const grad = introCtx.createRadialGradient(
-            introCanvas.width / 2, introCanvas.height / 2, 0,
-            introCanvas.width / 2, introCanvas.height / 2, introCanvas.width * 0.6
-        );
-        grad.addColorStop(0, 'rgba(79, 70, 229, 0.04)');
-        grad.addColorStop(0.5, 'rgba(147, 51, 234, 0.02)');
-        grad.addColorStop(1, 'rgba(5, 5, 5, 0)');
-        introCtx.fillStyle = grad;
-        introCtx.fillRect(0, 0, introCanvas.width, introCanvas.height);
-
-        introParticles.forEach(p => {
+        
+        particles.forEach(p => {
             p.update();
             p.draw();
         });
-
-        drawConnections();
-
-        introAnimId = requestAnimationFrame(animateIntroParticles);
+        
+        animId = requestAnimationFrame(animate);
     };
-
-    // ─── Start ───
-    initIntroParticles();
-    animateIntroParticles();
-
+    animate();
 
     // ─── Public: Signal that the 3D model has loaded ───
     const onModelLoaded = () => {
         modelLoaded = true;
 
-        // Transition from loading → ready
-        gsap.to('.intro-spinner', {
+        // Transition from STATE 1 -> STATE 2
+        gsap.to(introStatus, {
             opacity: 0,
-            scale: 0.5,
             duration: 0.6,
+            ease: 'power2.inOut',
             onComplete: () => {
-                document.querySelector('.intro-spinner').style.display = 'none';
+                introStatus.textContent = '[SYSTEM READY — CLICK TO ENTER]';
+                introStatus.classList.add('ready');
+                gsap.to(introStatus, { opacity: 1, duration: 0.8, ease: 'power2.inOut' });
+                introScreen.style.cursor = 'pointer';
+                introScreen.addEventListener('click', startExperience, { once: true });
             }
         });
-
-        // Update status text
-        setTimeout(() => {
-            introStatus.textContent = '[ SYSTEM READY — CLICK TO START ]';
-            introStatus.classList.add('ready');
-
-            // Enable click
-            introScreen.style.cursor = 'pointer';
-            introScreen.addEventListener('click', startExperience, { once: true });
-        }, 400);
     };
-
 
     // ─── Click-to-Start Sequence ───
     const startExperience = () => {
-        if (introExited) return;
-        introExited = true;
+        if (isClicked) return;
+        isClicked = true; // Lock input
 
-        // 1) Create and play a subtle AI ambient pulse (Web Audio API)
-        try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 2);
-            gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 2.5);
-        } catch(e) {
-            // Audio not supported, continue silently
-        }
-
-        // 2) Build the reveal timeline
         const tl = gsap.timeline();
 
-        // Hide status
-        tl.to(introStatus, {
-            opacity: 0,
-            duration: 0.4,
-            ease: 'power2.in'
-        });
+        // Dispatch reveal model so Three.js can start
+        window.dispatchEvent(new CustomEvent('intro:reveal-model'));
 
-        // 3) Reveal the title
-        tl.to(introTitle, {
-            opacity: 1,
-            y: 0,
-            duration: 1.2,
-            ease: 'power3.out'
-        }, '+=0.3');
-
-        // 4) Signal 3D model to fade in (dispatches custom event)
-        tl.call(() => {
-            window.dispatchEvent(new CustomEvent('intro:reveal-model'));
-        }, null, '-=0.8');
-
-        // 5) Hold
-        tl.to({}, { duration: 1.5 });
-
-        // 6) Exit overlay — fade out
+        // Step 1: Fade out intro overlay slowly
         tl.to(introScreen, {
             opacity: 0,
             duration: 1.5,
-            ease: 'power2.inOut',
-            onComplete: () => {
-                introScreen.style.display = 'none';
-                document.body.classList.remove('intro-active');
-                cancelAnimationFrame(introAnimId);
+            ease: 'power2.out'
+        }, 0);
 
-                // Dispatch event so rest of the site can initialize animations
-                window.dispatchEvent(new CustomEvent('intro:complete'));
-            }
+        // Step 2: Gradually fade IN main website
+        tl.to(mainWrapper, {
+            opacity: 1,
+            y: 0,
+            duration: 1.8,
+            ease: 'power3.out'
+        }, 0.2); // parallel, slightly offset
+
+        tl.call(() => {
+            introExited = true;
+            cancelAnimationFrame(animId);
+            // Step 3: Remove from DOM
+            introScreen.remove();
+            document.body.classList.remove('intro-active');
+            window.dispatchEvent(new CustomEvent('intro:complete'));
         });
     };
-
 
     // ─── Public API ───
     return {

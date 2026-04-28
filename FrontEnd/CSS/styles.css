@@ -3,7 +3,7 @@
    ============================================ */
 
 :root {
-    --bg-base: #050505;
+    --bg-base: #000000;
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.7);
     --accent-blue: #4F46E5;
@@ -50,7 +50,7 @@ body.intro-active {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: #050505;
+    background: #000000;
     z-index: 10000;
     display: flex;
     align-items: center;
@@ -69,88 +69,21 @@ body.intro-active {
     z-index: 1;
 }
 
-/* Scanline overlay effect */
-.intro-scanlines {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 2;
-    background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(255, 255, 255, 0.008) 2px,
-        rgba(255, 255, 255, 0.008) 4px
-    );
-}
-
-/* Intro content wrapper */
-#intro-content {
-    position: relative;
-    z-index: 3;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 40px;
-}
-
-/* Loader container */
-#intro-loader {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 28px;
-}
-
-/* Spinning ring loader */
-.intro-spinner {
-    width: 60px;
-    height: 60px;
-    border: 2px solid rgba(79, 70, 229, 0.15);
-    border-top-color: var(--accent-blue);
-    border-radius: 50%;
-    animation: spinLoader 1.2s linear infinite;
-}
-
-@keyframes spinLoader {
-    to { transform: rotate(360deg); }
-}
-
-/* Status text (loading / ready) */
+/* Centered text */
 #intro-status {
     font-family: var(--font-mono);
-    font-size: clamp(0.8rem, 2vw, 1rem);
-    letter-spacing: 0.25em;
-    color: rgba(255, 255, 255, 0.6);
+    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    letter-spacing: 0.15em;
+    color: rgba(255, 255, 255, 0.8);
     text-transform: uppercase;
+    font-weight: 400;
+    text-align: center;
+    transition: opacity 0.4s ease;
 }
 
-/* Ready state pulsing glow */
 #intro-status.ready {
-    color: var(--accent-blue);
-    animation: pulseReady 1.8s ease-in-out infinite;
-    cursor: pointer;
-}
-
-@keyframes pulseReady {
-    0%, 100% { opacity: 0.7; text-shadow: 0 0 10px rgba(79, 70, 229, 0.3); }
-    50%      { opacity: 1;   text-shadow: 0 0 25px rgba(79, 70, 229, 0.6); }
-}
-
-/* Title (hidden initially, revealed by GSAP) */
-#intro-title {
-    font-family: var(--font-heading);
-    font-size: clamp(1.6rem, 5vw, 3.6rem);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--text-primary);
-    opacity: 0;
-    transform: translateY(40px);
-    text-shadow: 0 0 40px rgba(79, 70, 229, 0.3);
+    color: #ffffff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }
 
 
