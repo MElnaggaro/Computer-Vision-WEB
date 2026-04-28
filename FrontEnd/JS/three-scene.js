@@ -1,15 +1,17 @@
 // ============================================
-// THREE.JS CINEMATIC 3D SYSTEM
+// THREE.JS CINEMATIC 3D SYSTEM — DUAL MODEL
 // ============================================
 // Full-featured 3D layer with:
 //   1. Scene, Camera, Renderer setup
 //   2. AI-themed lighting (blue/purple)
-//   3. GLB model loading + intro integration
-//   4. Base idle animation (rotation + float)
-//   5. Mouse parallax interaction (lerp)
-//   6. Scroll-driven section transitions (GSAP)
-//   7. Fog + depth atmosphere
-//   8. Responsiveness & performance
+//   3. TWO GLB models: AIU + 1930s Camera
+//   4. Cinematic model swap on button click
+//   5. Base idle animation (rotation + float)
+//   6. Mouse parallax interaction (lerp)
+//   7. Scroll-driven section transitions (GSAP)
+//   8. Demo sub-section scroll states for camera model
+//   9. Fog + depth atmosphere
+//  10. Responsiveness & performance
 // ============================================
 
 (() => {
@@ -20,7 +22,7 @@
 
     // ─── Scene ───
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x050510, 0.06); // Subtle depth fog
+    scene.fog = new THREE.FogExp2(0x050510, 0.06);
 
     // ─── Camera ───
     const camera = new THREE.PerspectiveCamera(
@@ -29,7 +31,8 @@
         0.1,
         100
     );
-    camera.position.z = 6;
+    camera.position.set(0, 0, 5);
+    camera.lookAt(0, 0, 0);
 
     // ─── Renderer ───
     const renderer = new THREE.WebGLRenderer({
@@ -41,6 +44,7 @@
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.domElement.style.zIndex = "0";
     container.appendChild(renderer.domElement);
 
 
@@ -48,135 +52,262 @@
     // LIGHTING — AI/FUTURISTIC STYLE
     // ============================================
 
-    // Low ambient for base visibility
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     scene.add(ambientLight);
 
-    // Main directional (key light)
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.position.set(5, 5, 5);
     scene.add(dirLight);
 
-    // Blue accent — left/top
+    const extraLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    extraLight.position.set(2, 2, 5);
+    scene.add(extraLight);
+
     const bluePoint = new THREE.PointLight(0x4F46E5, 2.5, 20);
     bluePoint.position.set(-4, 3, 4);
     scene.add(bluePoint);
 
-    // Purple accent — right/bottom
     const purplePoint = new THREE.PointLight(0x9333EA, 2.5, 20);
     purplePoint.position.set(4, -2, 3);
     scene.add(purplePoint);
 
-    // Pink rim light — behind
     const rimLight = new THREE.PointLight(0xEC4899, 1.5, 15);
     rimLight.position.set(0, 0, -5);
     scene.add(rimLight);
 
-    // Subtle fill from below for depth
     const fillLight = new THREE.PointLight(0x4F46E5, 0.8, 12);
     fillLight.position.set(0, -4, 2);
     scene.add(fillLight);
 
+    // Extra highlight for camera model (starts dim, activates on swap)
+    const cameraHighlight = new THREE.SpotLight(0xFFE4B5, 0, 18, Math.PI / 6, 0.5, 1);
+    cameraHighlight.position.set(0, 5, 5);
+    scene.add(cameraHighlight);
+    scene.add(cameraHighlight.target);
+
+    // Warm specular rim for camera model reflections
+    const warmRim = new THREE.PointLight(0xFFA726, 0, 14);
+    warmRim.position.set(-3, 2, -3);
+    scene.add(warmRim);
+
+    // Focused light for tiny model
+    const pointLight = new THREE.PointLight(0xffffff, 2);
+    pointLight.position.set(0, 0, 2);
+    scene.add(pointLight);
+
 
     // ============================================
-    // MODEL LOADING
+    // MODEL LOADING — BOTH MODELS
     // ============================================
-    let model = null;
-    let mixer = null;
+    let aiuModel = null;
+    let cameraModel = null;
+    let aiuMixer = null;
+    let cameraMixer = null;
     const clock = new THREE.Clock();
 
-    // ModelGroup separates scroll transforms from idle animations
-    const modelGroup = new THREE.Group();
-    const parallaxGroup = new THREE.Group();
-    modelGroup.add(parallaxGroup);
-    
-    modelGroup.visible = false;   // Hidden until intro reveal
-    scene.add(modelGroup);
+    // Track loading state for robust transition
+    let aiuLoaded = false;
+    let cameraLoaded = false;
+
+    // ─── AIU Model Group ───
+    const aiuGroup = new THREE.Group();
+    const aiuParallaxGroup = new THREE.Group();
+    aiuGroup.add(aiuParallaxGroup);
+    aiuGroup.visible = false;
+    scene.add(aiuGroup);
+
+    // ─── Camera Model Group ───
+    const cameraGroup = new THREE.Group();
+    const cameraParallaxGroup = new THREE.Group();
+    cameraGroup.add(cameraParallaxGroup);
+    cameraGroup.visible = false;
+    scene.add(cameraGroup);
+
+    // Transition flag
+    let switched = false;
+    let transitionInProgress = false;
 
     const loader = new THREE.GLTFLoader();
 
-    loader.load(
-        'model/aiu 3d.glb',
-        (gltf) => {
-            model = gltf.scene;
-
-            // Center geometry
-            const box = new THREE.Box3().setFromObject(model);
-            const center = box.getCenter(new THREE.Vector3());
-            model.position.set(-center.x, -center.y, -center.z);
-
-            // Scale up for visual impact (increased by ~20% for hero presence)
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const desiredScale = (2.5 / maxDim) * 1.2; 
-            model.scale.setScalar(desiredScale);
-
-            parallaxGroup.add(model);
-
-            // Play embedded animations
-            if (gltf.animations && gltf.animations.length > 0) {
-                mixer = new THREE.AnimationMixer(model);
-                gltf.animations.forEach((clip) => {
-                    mixer.clipAction(clip).play();
-                });
+    // ─── Helper: Set model opacity (traverse all meshes) ───
+    // IMPORTANT: Materials are cloned per-mesh during load to prevent
+    // shared-material conflicts when animating opacity independently.
+    const setModelOpacity = (targetModel, opacity) => {
+        if (!targetModel) return;
+        targetModel.traverse((child) => {
+            if (child.isMesh && child.material) {
+                child.material.transparent = true;
+                child.material.opacity = opacity;
+                // Ensure proper depth sorting for transparent objects
+                child.material.depthWrite = opacity > 0.99;
             }
+        });
+    };
 
-            // Set initial transform to hero state
-            const heroState = states[0];
-            gsap.set(modelGroup.position, heroState.position);
-            gsap.set(modelGroup.rotation, heroState.rotation);
-
-            // Start fully transparent (for intro fade-in)
-            setModelOpacity(0);
-
-            // Notify the intro system
-            if (window.IntroSystem) {
-                window.IntroSystem.onModelLoaded();
+    // ─── Helper: Clone materials so each mesh has its own instance ───
+    // This prevents shared-material bugs where changing opacity on one
+    // mesh affects another mesh using the same material reference.
+    const cloneMaterials = (targetModel) => {
+        if (!targetModel) return;
+        targetModel.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(m => m.clone());
+                } else {
+                    child.material = child.material.clone();
+                }
+                child.material.transparent = true;
+                child.material.needsUpdate = true;
             }
-        },
-        (xhr) => {
-            // Optional: progress callback
-        },
-        (error) => {
-            console.error('3D Model load error:', error);
-            // Still allow intro to proceed
+        });
+    };
+
+    // ─── Helper: Enhance metalness/roughness for camera model ───
+    const enhanceCameraReflections = (targetModel) => {
+        if (!targetModel) return;
+        targetModel.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (child.material.metalness !== undefined) {
+                    child.material.metalness = Math.min(child.material.metalness + 0.15, 1.0);
+                    child.material.roughness = Math.max(child.material.roughness - 0.1, 0.1);
+                }
+                child.material.envMapIntensity = 1.5;
+            }
+        });
+    };
+
+
+    // ──────────────────────────────────────
+    // LOAD MODEL 1: AIU 3D
+    // ──────────────────────────────────────
+    let modelsLoaded = 0;
+    const totalModels = 2;
+
+    const checkAllModelsLoaded = () => {
+        modelsLoaded++;
+        if (modelsLoaded >= totalModels) {
             if (window.IntroSystem) {
                 window.IntroSystem.onModelLoaded();
             }
         }
+    };
+
+    loader.load(
+        'model/aiu 3d.glb',
+        (gltf) => {
+            aiuModel = gltf.scene;
+
+            const box = new THREE.Box3().setFromObject(aiuModel);
+            const center = box.getCenter(new THREE.Vector3());
+            aiuModel.position.set(-center.x, -center.y, -center.z);
+
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const desiredScale = (2.5 / maxDim) * 0.85;
+            aiuModel.scale.setScalar(desiredScale);
+
+            // Clone materials for independent opacity control
+            cloneMaterials(aiuModel);
+
+            aiuParallaxGroup.add(aiuModel);
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                aiuMixer = new THREE.AnimationMixer(aiuModel);
+                gltf.animations.forEach((clip) => {
+                    aiuMixer.clipAction(clip).play();
+                });
+            }
+
+            // Set initial transform to hero state
+            const heroState = aiuStates[0];
+            gsap.set(aiuGroup.position, heroState.position);
+            gsap.set(aiuGroup.rotation, heroState.rotation);
+
+            setModelOpacity(aiuModel, 0);
+
+            aiuLoaded = true;
+            console.log('[3D] ✅ AIU model loaded successfully');
+
+            checkAllModelsLoaded();
+        },
+        (xhr) => {
+            if (xhr.total) {
+                const pct = Math.round((xhr.loaded / xhr.total) * 100);
+                if (pct % 25 === 0) console.log(`[3D] AIU model loading: ${pct}%`);
+            }
+        },
+        (error) => {
+            console.error('[3D] ❌ AIU Model load error:', error);
+            checkAllModelsLoaded();
+        }
     );
 
 
-    // ─── Helper: Set model opacity (for fade-in) ───
-    const setModelOpacity = (opacity) => {
-        if (!model) return;
-        model.traverse((child) => {
-            if (child.isMesh && child.material) {
+    // ──────────────────────────────────────
+    // LOAD MODEL 2: 1930s MOVIE CAMERA
+    // ──────────────────────────────────────
+    loader.load(
+        'model/1930s_movie_camera.glb',
+        (gltf) => {
+            console.log("MODEL LOADED");
+            cameraModel = gltf.scene;
+
+            // ─── DEBUG: Match scale and position ───
+            scene.add(cameraModel);
+
+            // Cinematic Scale Adjustment
+            cameraModel.scale.set(0.020, 0.020, 0.020);
+
+            // Move closer to camera
+            cameraModel.position.set(0, 0, 1.3);
+
+            // Tilt model (~45 degrees)
+            cameraModel.rotation.z = Math.PI / 4;
+            cameraModel.rotation.y = 0.5;
+
+            cameraModel.visible = false;
+
+            // ─── DEBUG: Fix material ───
+            cameraModel.traverse((child) => {
+              if (child.isMesh) {
                 child.material.transparent = true;
-                child.material.opacity = opacity;
+                child.material.opacity = 1;
+              }
+            });
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                cameraMixer = new THREE.AnimationMixer(cameraModel);
+                gltf.animations.forEach((clip) => {
+                    cameraMixer.clipAction(clip).play();
+                });
             }
-        });
-    };
+
+            cameraLoaded = true;
+            checkAllModelsLoaded();
+        },
+        undefined,
+        (error) => {
+            console.error("ERROR LOADING MODEL", error);
+            checkAllModelsLoaded();
+        }
+    );
 
 
     // ============================================
     // INTRO INTEGRATION — MODEL REVEAL
     // ============================================
 
-    // Listen for the reveal event from intro-cinematic.js
     window.addEventListener('intro:reveal-model', () => {
-        modelGroup.visible = true;
+        aiuGroup.visible = true;
 
-        // Fade in model (1.8s)
         const fadeObj = { opacity: 0 };
         gsap.to(fadeObj, {
             opacity: 1,
             duration: 1.8,
             ease: 'power2.out',
-            onUpdate: () => setModelOpacity(fadeObj.opacity)
+            onUpdate: () => setModelOpacity(aiuModel, fadeObj.opacity)
         });
 
-        // Glow pulse — animate lights intensity (yoyo, overlaps)
         gsap.to(bluePoint, {
             intensity: 4,
             duration: 1.2,
@@ -196,14 +327,13 @@
 
 
     // ============================================
-    // TRANSFORM STATES — SCROLL-DRIVEN POSITIONS
+    // TRANSFORM STATES — AIU MODEL (SCROLL-DRIVEN)
     // ============================================
-    // Model alternates LEFT ↔ RIGHT between sections
 
-    const states = [
+    const aiuStates = [
         {
             id: "hero",
-            position: { x: -1.8, y: 0, z: 2 }, // LEFT side
+            position: { x: -1.8, y: 0, z: 2 },
             rotation: { x: 0, y: 0.5, z: 0 }
         },
         {
@@ -230,83 +360,248 @@
 
 
     // ============================================
+    // TRANSFORM STATES — CAMERA MODEL (DEMO SUB-SECTIONS)
+    // ============================================
+
+    const demoStates = [
+        {
+            id: "camera-section",
+            position: { x: 1.5 },   // RIGHT
+            rotationY: 1.5
+        },
+        {
+            id: "voice-section",
+            position: { x: -1.5 },  // LEFT
+            rotationY: 3.0
+        },
+        {
+            id: "result-section",
+            position: { x: 1.5 },   // RIGHT AGAIN
+            rotationY: 4.5
+        }
+    ];
+
+
+    // ============================================
+    // CINEMATIC TRANSITION — CLICK-TRIGGERED
+    // ============================================
+    // Exposed as window.startModelTransition()
+    // Called from interactive-demo.js on button click
+
+    const startModelTransition = () => {
+        if (switched || transitionInProgress) {
+            console.log('[3D] Transition skipped — already switched or in progress');
+            return;
+        }
+
+        // ─── GUARD: Ensure camera model is loaded ───
+        if (!cameraLoaded || !cameraModel) {
+            console.warn('[3D] ⚠ Camera model not loaded yet — deferring transition');
+            // Retry every 200ms until model is loaded (max 15s)
+            let attempts = 0;
+            const maxAttempts = 75;
+            const retryInterval = setInterval(() => {
+                attempts++;
+                if (cameraLoaded && cameraModel) {
+                    clearInterval(retryInterval);
+                    console.log('[3D] Camera model now loaded — executing transition');
+                    executeTransition();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(retryInterval);
+                    console.error('[3D] ❌ Camera model failed to load after 15s — transition aborted');
+                }
+            }, 200);
+            return;
+        }
+
+        executeTransition();
+    };
+
+    const executeTransition = () => {
+        transitionInProgress = true;
+        console.log('[3D] 🎬 Starting cinematic model transition...');
+
+        // ─── 1) AIU MODEL EXIT (LEFT + FADE) ───
+        gsap.to(aiuGroup.position, {
+            x: -4,
+            duration: 1.2,
+            ease: "power3.inOut"
+        });
+
+        const aiuFade = { opacity: 1 };
+        gsap.to(aiuFade, {
+            opacity: 0,
+            duration: 1,
+            onUpdate: () => setModelOpacity(aiuModel, aiuFade.opacity),
+            onComplete: () => {
+                aiuGroup.visible = false;
+                console.log('[3D] AIU model hidden');
+            }
+        });
+
+        // ─── 2) CAMERA MODEL ENTER (RIGHT → CENTER) ───
+        cameraModel.visible = true;
+        cameraModel.position.set(3.5, 0, 1.3);
+
+        gsap.to(cameraModel.position, {
+            x: 0,
+            duration: 1.2,
+            ease: "power3.out"
+        });
+
+        // ─── 3) SET FLAGS ───
+        switched = true;
+        transitionInProgress = false;
+        console.log('[3D] ✅ Camera model fully visible — transition complete');
+
+        // ─── Enhanced lighting for camera model ───
+        gsap.to(cameraHighlight, {
+            intensity: 2.0,
+            duration: 1.5,
+            delay: 0.5,
+            ease: "power2.out"
+        });
+
+        gsap.to(warmRim, {
+            intensity: 1.2,
+            duration: 1.5,
+            delay: 0.6,
+            ease: "power2.out"
+        });
+
+        // Shift existing lights for warm vintage tone
+        gsap.to(bluePoint, {
+            intensity: 1.8,
+            duration: 1.5,
+            delay: 0.5,
+            ease: "power2.out"
+        });
+
+        gsap.to(purplePoint, {
+            intensity: 1.8,
+            duration: 1.5,
+            delay: 0.5,
+            ease: "power2.out"
+        });
+    };
+
+    // ─── EXPOSE globally so interactive-demo.js can call it ───
+    window.startModelTransition = startModelTransition;
+
+
+    // ============================================
     // SCROLL DETECTION + GSAP TRANSITIONS
     // ============================================
     let currentStateId = "hero";
+    let currentDemoStateId = null;
     let scrollEnabled = false;
 
-    // Enable scroll tracking after intro completes
     window.addEventListener('intro:complete', () => {
         scrollEnabled = true;
     });
 
     window.addEventListener('scroll', () => {
-        if (!scrollEnabled || !modelGroup) return;
+        if (!scrollEnabled) return;
 
-        let activeStateId = currentStateId;
-        let minDistance = Infinity;
-        const centerY = window.innerHeight / 2;
+        // ─── PRE-SWITCH: AIU model follows main page sections ───
+        if (!switched && !transitionInProgress) {
+            let activeStateId = currentStateId;
+            let minDistance = Infinity;
+            const centerY = window.innerHeight / 2;
 
-        // Find the closest section to center of viewport
-        states.forEach(state => {
-            const el = document.getElementById(state.id);
-            if (el) {
-                const rect = el.getBoundingClientRect();
-                const elCenter = rect.top + rect.height / 2;
-                const dist = Math.abs(centerY - elCenter);
+            aiuStates.forEach(state => {
+                const el = document.getElementById(state.id);
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const elCenter = rect.top + rect.height / 2;
+                    const dist = Math.abs(centerY - elCenter);
 
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    activeStateId = state.id;
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        activeStateId = state.id;
+                    }
+                }
+            });
+
+            // Animate only when state changes
+            if (activeStateId !== currentStateId) {
+                currentStateId = activeStateId;
+                const target = aiuStates.find(s => s.id === currentStateId);
+
+                if (target) {
+                    gsap.to(aiuGroup.position, {
+                        x: target.position.x,
+                        y: target.position.y,
+                        z: target.position.z,
+                        duration: 1.5,
+                        ease: 'power3.out',
+                        overwrite: 'auto'
+                    });
+
+                    gsap.to(aiuGroup.rotation, {
+                        x: target.rotation.x,
+                        y: target.rotation.y,
+                        z: target.rotation.z,
+                        duration: 1.5,
+                        ease: 'power3.out',
+                        overwrite: 'auto'
+                    });
                 }
             }
-        });
-
-        // Lock to final section (stop following if scrolling into demo)
-        if (currentStateId === "final" && activeStateId === "final") {
-            // Already at final, do nothing
         }
 
-        // Animate only when state changes (no repeated triggers)
-        if (activeStateId !== currentStateId) {
-            currentStateId = activeStateId;
-            const target = states.find(s => s.id === currentStateId);
+        // ─── POST-SWITCH: Camera model follows demo sub-sections ───
+        if (switched && !transitionInProgress && cameraModel && cameraModel.visible) {
+            const centerY = window.innerHeight / 2;
+            let closestDemoId = null;
+            let minDemoDist = Infinity;
 
-            if (target) {
-                // Cinematic position transition
-                gsap.to(modelGroup.position, {
-                    x: target.position.x,
-                    y: target.position.y,
-                    z: target.position.z,
-                    duration: 1.5,
-                    ease: 'power3.out',
-                    overwrite: 'auto'
-                });
+            demoStates.forEach(state => {
+                const el = document.getElementById(state.id);
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const elCenter = rect.top + rect.height / 2;
+                    const dist = Math.abs(centerY - elCenter);
 
-                // Cinematic rotation transition
-                gsap.to(modelGroup.rotation, {
-                    x: target.rotation.x,
-                    y: target.rotation.y,
-                    z: target.rotation.z,
-                    duration: 1.5,
-                    ease: 'power3.out',
-                    overwrite: 'auto'
-                });
+                    if (dist < minDemoDist) {
+                        minDemoDist = dist;
+                        closestDemoId = state.id;
+                    }
+                }
+            });
+
+            if (closestDemoId && closestDemoId !== currentDemoStateId) {
+                currentDemoStateId = closestDemoId;
+                const target = demoStates.find(s => s.id === currentDemoStateId);
+
+                if (target) {
+                    gsap.to(cameraModel.position, {
+                        x: target.position.x,
+                        duration: 1.2,
+                        ease: "power3.out",
+                        overwrite: "auto"
+                    });
+
+                    gsap.to(cameraModel.rotation, {
+                        y: target.rotationY,
+                        duration: 1.2,
+                        overwrite: "auto"
+                    });
+                }
             }
         }
     });
 
 
     // ============================================
-    // MOUSE INTERACTION — PARALLAX
+    // MOUSE INTERACTION — PARALLAX (BOTH MODELS)
     // ============================================
     const mouseTarget  = { x: 0, y: 0 };
     const mouseCurrent = { x: 0, y: 0 };
-    const MOUSE_LERP   = 0.06;  // Smooth lerp factor
-    const MOUSE_RANGE  = 0.3;   // Max rotation range in radians
+    const MOUSE_LERP   = 0.06;
+    const MOUSE_RANGE  = 0.3;
 
     window.addEventListener('mousemove', (e) => {
-        // Normalize mouse to -1..1
         mouseTarget.x = (e.clientX / window.innerWidth) * 2 - 1;
         mouseTarget.y = (e.clientY / window.innerHeight) * 2 - 1;
     });
@@ -317,6 +612,13 @@
     // ============================================
     const idleTime = { value: 0 };
 
+    function applyBaseAnimation(model, time, delta, rotSpeed) {
+        // Use delta time for frame-rate independent smooth rotation
+        // Normalize against typical 60fps (1/60s) for consistent values
+        model.rotation.y += rotSpeed * (delta * 60);
+        model.position.y = Math.sin(time) * 0.08;
+    }
+
     const animate = () => {
         requestAnimationFrame(animate);
 
@@ -324,27 +626,31 @@
         idleTime.value += delta;
 
         // Update embedded animations
-        if (mixer) {
-            mixer.update(delta);
+        if (aiuMixer) aiuMixer.update(delta);
+        if (cameraMixer) cameraMixer.update(delta);
+
+        // ─── AIU Model: Base Idle ───
+        if (aiuModel && aiuGroup.visible) {
+            applyBaseAnimation(aiuModel, idleTime.value, delta, 0.002);
         }
 
-        if (model) {
-            // ─── Base Idle: Slow continuous Y rotation ───
-            model.rotation.y += 0.003;
-
-            // ─── Base Idle: Floating sine wave ───
-            model.position.y += Math.sin(idleTime.value * 1.5) * 0.001;
+        // ─── Camera Model: Faster Base Idle ───
+        if (cameraModel && cameraModel.visible) {
+            applyBaseAnimation(cameraModel, idleTime.value, delta, 0.007);
         }
 
-        // ─── Mouse Parallax (smooth lerp) ───
+        // ─── Mouse Parallax (smooth lerp) — BOTH models ───
         mouseCurrent.x += (mouseTarget.x - mouseCurrent.x) * MOUSE_LERP;
         mouseCurrent.y += (mouseTarget.y - mouseCurrent.y) * MOUSE_LERP;
 
-        if (parallaxGroup && modelGroup.visible) {
-            // Apply mouse rotation offset to the parallax group
-            // This is additive to the continuous rotation on the model
-            parallaxGroup.rotation.x += (mouseCurrent.y * MOUSE_RANGE - parallaxGroup.rotation.x) * 0.1;
-            parallaxGroup.rotation.y += (mouseCurrent.x * MOUSE_RANGE - parallaxGroup.rotation.y) * 0.1;
+        if (aiuParallaxGroup && aiuGroup.visible) {
+            aiuParallaxGroup.rotation.x += (mouseCurrent.y * MOUSE_RANGE - aiuParallaxGroup.rotation.x) * 0.1;
+            aiuParallaxGroup.rotation.y += (mouseCurrent.x * MOUSE_RANGE - aiuParallaxGroup.rotation.y) * 0.1;
+        }
+
+        if (cameraParallaxGroup && cameraGroup.visible) {
+            cameraParallaxGroup.rotation.x += (mouseCurrent.y * MOUSE_RANGE - cameraParallaxGroup.rotation.x) * 0.1;
+            cameraParallaxGroup.rotation.y += (mouseCurrent.x * MOUSE_RANGE - cameraParallaxGroup.rotation.y) * 0.1;
         }
 
         // ─── Animate accent lights subtly ───
@@ -353,6 +659,12 @@
         bluePoint.position.y  = 3 + Math.cos(lightTime * 0.8) * 0.3;
         purplePoint.position.x = 4 + Math.cos(lightTime * 0.7) * 0.5;
         purplePoint.position.y = -2 + Math.sin(lightTime * 0.9) * 0.3;
+
+        // Warm light orbit when camera model is active
+        if (switched) {
+            warmRim.position.x = -3 + Math.sin(lightTime * 0.6) * 1.0;
+            warmRim.position.y = 2 + Math.cos(lightTime * 0.4) * 0.5;
+        }
 
         renderer.render(scene, camera);
     };
@@ -368,14 +680,15 @@
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // Adjust scale for mobile
+        let scaleFactor = 1;
         if (window.innerWidth < 768) {
-            modelGroup.scale.set(0.6, 0.6, 0.6);
+            scaleFactor = 0.6;
         } else if (window.innerWidth < 1024) {
-            modelGroup.scale.set(0.8, 0.8, 0.8);
-        } else {
-            modelGroup.scale.set(1, 1, 1);
+            scaleFactor = 0.8;
         }
+
+        aiuGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        cameraGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
     };
 
     window.addEventListener('resize', handleResize);

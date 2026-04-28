@@ -655,8 +655,26 @@ section {
    INTERACTIVE DEMO SECTION
    ============================================ */
 .demo-section {
-    display: none; /* Task 1: Fix empty space */
-    padding: 100px 5%;
+    display: none; /* Hidden until launch-demo-btn is clicked */
+    padding: 0; /* Remove section padding — sub-sections handle their own */
+    max-width: 100%; /* Full width container */
+}
+
+/* Each demo step is a full-viewport scroll target */
+.demo-step {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 5%;
+    position: relative;
+}
+
+/* Inner wrapper constrains content width */
+.demo-step-inner {
+    width: 65%;
+    max-width: 900px;
+    margin: 0 auto;
 }
 
 .demo-container {
@@ -945,6 +963,10 @@ section {
     .demo-container {
         width: 95%;
         padding: 20px;
+    }
+    
+    .demo-step-inner {
+        width: 95%;
     }
     
     .result-grid {

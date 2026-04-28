@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let demoActivated = false;
 
-    // 1. Launch Demo Flow (No Delays/Staggers, Direct display fix)
+    // 1. Launch Demo Flow — triggers 3D model transition + reveals demo
     launchBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -33,10 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             demoActivated = true;
             
-            // Task 1 fix: display block before animating to remove empty space visually
+            // Show the demo section
             demoSection.style.display = "block";
             
-            // Reveal entire section instantly as a unified dashboard
+            // Reveal with GSAP animation
             gsap.from(demoSection, { 
                 opacity: 0, 
                 y: 60, 
@@ -47,10 +47,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            // Scroll to the section smoothly
+            // Scroll to the demo section
             setTimeout(() => {
                 demoSection.scrollIntoView({ behavior: 'smooth' });
             }, 100);
+
+            // ─── TRIGGER 3D MODEL TRANSITION ───
+            // Fires the cinematic swap: AIU exits left → Camera enters right
+            setTimeout(() => {
+                if (window.startModelTransition) {
+                    window.startModelTransition();
+                }
+            }, 400); // Slight delay so scroll begins first
         });
     });
 

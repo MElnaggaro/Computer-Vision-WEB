@@ -191,12 +191,12 @@
                 </div>
             </section>
 
-            <!-- Interactive Demo Section (Unified Control Panel) -->
+            <!-- Interactive Demo Section — Full-viewport sub-sections for scroll-driven 3D -->
             <section class="demo-section" id="demo">
-                <div class="demo-container glass-panel">
-                    <div class="demo-modules unified-panel">
-                        
-                        <!-- Camera Module -->
+
+                <!-- STEP 1: Camera Module (model → RIGHT) -->
+                <div class="demo-step" id="camera-section">
+                    <div class="demo-step-inner">
                         <div class="demo-module camera-module glass-panel">
                             <div class="module-header">
                                 <span class="module-label">Camera</span>
@@ -212,8 +212,12 @@
                                 <button id="camera-toggle-btn" class="btn btn-secondary">Start Camera</button>
                             </div>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- Voice Module -->
+                <!-- STEP 2: Voice Module (model → LEFT) -->
+                <div class="demo-step" id="voice-section">
+                    <div class="demo-step-inner">
                         <div class="demo-module voice-module glass-panel">
                             <div class="module-header">
                                 <span class="module-label">Voice Input</span>
@@ -228,8 +232,12 @@
                                 <button id="mic-toggle-btn" class="btn btn-secondary">Start Recording</button>
                             </div>
                         </div>
-                        
-                        <!-- AI Result Module -->
+                    </div>
+                </div>
+
+                <!-- STEP 3: AI Result Module (model → CENTER) -->
+                <div class="demo-step" id="result-section">
+                    <div class="demo-step-inner">
                         <div class="demo-module result-module glass-panel full-width">
                             <div class="module-header">
                                 <span class="module-label">AI Analysis</span>
@@ -259,9 +267,9 @@
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
+
             </section>
 
             <!-- Footer -->
