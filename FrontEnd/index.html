@@ -64,7 +64,7 @@
                         AI-powered system for automated attendance, emotion analysis, and intelligent interaction to elevate the educational experience.
                     </p>
                     <div class="hero-actions fade-up">
-                        <a href="#demo" class="btn btn-primary" data-cursor="hover">See Demo</a>
+                        <a href="javascript:void(0)" class="btn btn-primary launch-demo-btn" data-cursor="hover">See Demo</a>
                         <a href="#features" class="btn btn-secondary" data-cursor="hover">Explore Features</a>
                     </div>
                 </div>
@@ -187,7 +187,80 @@
                 <div class="cta-box glass-panel">
                     <h2 class="cta-title">Ready to upgrade your classroom?</h2>
                     <p class="cta-subtitle">Experience the future of education with our smart assistant.</p>
-                    <a href="#" class="btn btn-primary btn-large" data-cursor="hover">Launch Interactive Demo</a>
+                    <a href="javascript:void(0)" class="btn btn-primary btn-large launch-demo-btn" data-cursor="hover">Launch Interactive Demo</a>
+                </div>
+            </section>
+
+            <!-- Interactive Demo Section (Unified Control Panel) -->
+            <section class="demo-section" id="demo">
+                <div class="demo-container glass-panel">
+                    <div class="demo-modules unified-panel">
+                        
+                        <!-- Camera Module -->
+                        <div class="demo-module camera-module glass-panel">
+                            <div class="module-header">
+                                <span class="module-label">Camera</span>
+                            </div>
+                            <div class="camera-preview" id="camera-preview-container">
+                                <video id="demo-video" autoplay playsinline muted></video>
+                                <div class="camera-placeholder" id="camera-placeholder">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                    <p>Camera Offline</p>
+                                </div>
+                            </div>
+                            <div class="module-controls">
+                                <button id="camera-toggle-btn" class="btn btn-secondary">Start Camera</button>
+                            </div>
+                        </div>
+
+                        <!-- Voice Module -->
+                        <div class="demo-module voice-module glass-panel">
+                            <div class="module-header">
+                                <span class="module-label">Voice Input</span>
+                            </div>
+                            <div class="mic-container">
+                                <button class="mic-btn" id="demo-mic-btn" data-cursor="hover">
+                                    <svg class="mic-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                                </button>
+                                <p class="voice-text" id="voice-status-text">Ready to record</p>
+                            </div>
+                            <div class="module-controls">
+                                <button id="mic-toggle-btn" class="btn btn-secondary">Start Recording</button>
+                            </div>
+                        </div>
+                        
+                        <!-- AI Result Module -->
+                        <div class="demo-module result-module glass-panel full-width">
+                            <div class="module-header">
+                                <span class="module-label">AI Analysis</span>
+                            </div>
+                            <div class="result-content" id="result-content">
+                                <div class="result-grid">
+                                    <div class="result-item">
+                                        <span class="result-label">Student Name</span>
+                                        <span class="result-val">Ahmed Ali</span>
+                                    </div>
+                                    <div class="result-item">
+                                        <span class="result-label">Attendance</span>
+                                        <span class="result-val status-green">Present</span>
+                                    </div>
+                                    <div class="result-item">
+                                        <span class="result-label">Mood</span>
+                                        <span class="result-val mood-tired">Tired</span>
+                                    </div>
+                                    <div class="result-item full-span">
+                                        <span class="result-label">Question</span>
+                                        <span class="result-val italic" id="final-question-text">"Waiting for input..."</span>
+                                    </div>
+                                    <div class="result-item full-span highlight-box">
+                                        <span class="result-label">Topic</span>
+                                        <span class="result-val gradient-text" id="final-topic-text">Awaiting Analysis</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </section>
 
@@ -207,5 +280,6 @@
     <script src="JS/intro-cinematic.js"></script>
     <script src="JS/three-scene.js"></script>
     <script src="JS/script.js"></script>
+    <script src="JS/interactive-demo.js"></script>
 </body>
 </html>

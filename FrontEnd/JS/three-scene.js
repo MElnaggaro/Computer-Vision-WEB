@@ -262,6 +262,11 @@
             }
         });
 
+        // Lock to final section (stop following if scrolling into demo)
+        if (currentStateId === "final" && activeStateId === "final") {
+            // Already at final, do nothing
+        }
+
         // Animate only when state changes (no repeated triggers)
         if (activeStateId !== currentStateId) {
             currentStateId = activeStateId;
