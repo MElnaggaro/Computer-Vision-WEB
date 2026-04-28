@@ -200,6 +200,7 @@
             const box = new THREE.Box3().setFromObject(aiuModel);
             const center = box.getCenter(new THREE.Vector3());
             aiuModel.position.set(-center.x, -center.y, -center.z);
+            aiuModel.position.x = 0.5;
 
             const size = box.getSize(new THREE.Vector3());
             const maxDim = Math.max(size.x, size.y, size.z);
