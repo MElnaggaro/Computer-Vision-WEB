@@ -32,11 +32,12 @@ class FaceDetector:
         """
         self.model = model or settings.FACE_RECOGNITION_MODEL
 
-    def detect_faces(self, frame: np.ndarray) -> List[FaceLocation]:
-        """Detect all faces in a BGR frame.
+    def detect_faces(self, frame: np.ndarray, is_rgb: bool = False) -> List[FaceLocation]:
+        """Detect all faces in a frame.
 
         Args:
-            frame: A BGR image (np.ndarray) as returned by ``cv2.VideoCapture``.
+            frame: A BGR or RGB image (np.ndarray).
+            is_rgb: True if the frame is already in RGB format.
 
         Returns:
             List of ``(top, right, bottom, left)`` bounding‑box tuples.
@@ -45,7 +46,11 @@ class FaceDetector:
             logger.warning("Received empty frame – skipping detection.")
             return []
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if not is_rgb:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        else:
+            rgb_frame = frame
+            
         locations: List[FaceLocation] = fr_lib.face_locations(
             rgb_frame, model=self.model
         )

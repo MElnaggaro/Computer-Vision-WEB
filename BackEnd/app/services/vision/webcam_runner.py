@@ -26,7 +26,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -82,6 +82,21 @@ class ClassroomCamera:
         )
         self.face_tracker = FaceTracker()
         self.attendance_service = attendance_service or AttendanceService()
+        
+        # ── Optimisation variables ───────────────────────────────────
+        self.frame_count = 0
+        self.frame_skip = 3
+        self.trackers: List[Tuple[Any, Dict[str, Any]]] = []
+
+    def _create_tracker(self) -> Optional[Any]:
+        """Create an OpenCV object tracker, falling back to MIL if KCF unavailable."""
+        try:
+            return cv2.TrackerKCF_create()
+        except AttributeError:
+            try:
+                return cv2.TrackerMIL_create()
+            except AttributeError:
+                return None
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -121,6 +136,8 @@ class ClassroomCamera:
             ``(annotated_frame, stable_results)`` where ``annotated_frame`` has
             bounding boxes and labels drawn on it.
         """
+        self.frame_count += 1
+        
         # Preprocessing: Apply CLAHE for lighting robustness
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
@@ -128,14 +145,48 @@ class ClassroomCamera:
         cl = clahe.apply(l)
         enhanced_frame = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
 
-        locations = self.face_detector.detect_faces(enhanced_frame)
-        raw_results = (
-            self.face_recognizer.recognize_faces(enhanced_frame, locations)
-            if locations
-            else []
-        )
+        # 1. Resize frame for faster processing
+        small_frame = cv2.resize(enhanced_frame, (0, 0), fx=0.25, fy=0.25)
+        # 2. Convert to RGB only once
+        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-        stable_results = self.face_tracker.update(raw_results)
+        # 3. Process every Nth frame
+        if self.frame_count % self.frame_skip == 1 or self.frame_count == 1:
+            locations = self.face_detector.detect_faces(rgb_small_frame, is_rgb=True)
+            raw_results = (
+                self.face_recognizer.recognize_faces(rgb_small_frame, locations, is_rgb=True)
+                if locations
+                else []
+            )
+
+            # Scale locations back up to original frame size
+            for res in raw_results:
+                t, r, b, left = res["location"]
+                res["location"] = (t * 4, r * 4, b * 4, left * 4)
+
+            # Re-initialize object trackers
+            self.trackers = []
+            for res in raw_results:
+                tracker = self._create_tracker()
+                if tracker is not None:
+                    t, r, b, left = res["location"]
+                    bbox = (left, t, r - left, b - t)
+                    tracker.init(enhanced_frame, bbox)
+                    self.trackers.append((tracker, dict(res)))
+            
+            tracking_results = raw_results
+        else:
+            # 4. Use Object Tracking for intermediate frames
+            tracking_results = []
+            for tracker, res in self.trackers:
+                success, bbox = tracker.update(enhanced_frame)
+                if success:
+                    x, y, w, h = [int(v) for v in bbox]
+                    res["location"] = (y, x + w, y + h, x)
+                tracking_results.append(res)
+                
+        # 5. Stabilize identities using face tracker
+        stable_results = self.face_tracker.update(tracking_results)
 
         # Mark attendance for each recognised stable face
         for result in stable_results:
@@ -145,6 +196,11 @@ class ClassroomCamera:
                     known=result["known"],
                     similarity=result.get("similarity", 0.0),
                 )
+                
+        # 6. Save log only when attendance changes (handled inside attendance_service logic)
+        # We explicitly call save_log to persist to disk if _has_unsaved_changes is True
+        if getattr(self.attendance_service, "_has_unsaved_changes", False):
+            self.attendance_service.save_log()
 
         annotated = self._draw_annotations(frame.copy(), stable_results)
         return annotated, stable_results
@@ -154,6 +210,7 @@ class ClassroomCamera:
 
         Press **Q** to quit, **R** to reset session, **B** to rebuild encodings.
         """
+        # Ensure encodings are loaded exactly once at startup
         if not self.ensure_encodings():
             logger.warning(
                 "Starting camera WITHOUT encodings — all faces will be Unknown."

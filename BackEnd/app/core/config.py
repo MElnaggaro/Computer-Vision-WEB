@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     NUM_JITTERS: int = 3                         # jitters for encoding accuracy
 
     # ── Temporal stabilization ───────────────────────────────────────
-    TRACK_HISTORY_SIZE: int = 15                 # frames of recognition history
-    TRACK_STABILITY_THRESHOLD: int = 8           # votes needed for stable ID
+    TRACK_HISTORY_SIZE: int = 10                 # frames of recognition history
+    TRACK_STABILITY_THRESHOLD: int = 6           # votes needed for stable ID
     TRACK_MAX_MISSED_FRAMES: int = 10            # frames before dropping a track
     TRACK_IOU_THRESHOLD: float = 0.25            # IoU for cross‑frame matching
     ATTENDANCE_STABLE_FRAMES: int = 10           # stable frames before marking

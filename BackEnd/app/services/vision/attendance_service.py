@@ -36,6 +36,7 @@ class AttendanceService:
         self.log_file = log_file or settings.ATTENDANCE_LOG_FILE
         self._marked: Set[str] = set()          # student names marked this session
         self._records: List[AttendanceRecord] = []
+        self._has_unsaved_changes: bool = False
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -73,6 +74,7 @@ class AttendanceService:
             self._marked.add(name)
 
         self._records.append(record)
+        self._has_unsaved_changes = True
         logger.info(
             "Attendance marked: %s (%s, similarity=%.4f)",
             name,
@@ -91,6 +93,9 @@ class AttendanceService:
         Returns:
             The ``Path`` to the written log file.
         """
+        if not self._has_unsaved_changes and self.log_file.exists():
+            return self.log_file
+
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Merge with any existing log entries
@@ -111,6 +116,7 @@ class AttendanceService:
         with open(self.log_file, "w", encoding="utf-8") as fh:
             json.dump(combined, fh, indent=2, ensure_ascii=False)
 
+        self._has_unsaved_changes = False
         logger.info("Saved %d records to %s", len(self._records), self.log_file)
         return self.log_file
 

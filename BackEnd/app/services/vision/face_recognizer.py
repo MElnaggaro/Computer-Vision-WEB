@@ -11,7 +11,6 @@ to avoid shadowing the pip‑installed ``face_recognition`` library.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
@@ -31,31 +30,22 @@ RecognitionResult = Dict[str, Any]
 class FaceRecognizer:
     """Identify detected faces against a database of known encodings.
 
-    Uses a **top‑K per‑student voting** strategy:
-        1. Compute distance to *every* stored encoding.
-        2. Group distances by student name.
-        3. For each student, take the best K distances and average them.
-        4. The student with the lowest average wins.
-
-    This is far more accurate than a simple single‑minimum approach when
-    students have multiple reference images (which they do).
+    Finds the absolute minimum distance among all encodings across all students.
     """
 
     def __init__(
         self,
         encoding_manager: Optional[EncodingManager] = None,
         tolerance: Optional[float] = None,
-        top_k: int = 3,
+        **kwargs,
     ) -> None:
         """
         Args:
             encoding_manager: Pre‑initialised encoding manager (DI‑friendly).
             tolerance: Face‑distance tolerance for matching (lower = stricter).
-            top_k: Number of best distances to average per student.
         """
         self.encoding_manager = encoding_manager or EncodingManager()
         self.tolerance = tolerance if tolerance is not None else settings.FACE_RECOGNITION_TOLERANCE
-        self.top_k = top_k
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -63,12 +53,14 @@ class FaceRecognizer:
         self,
         frame: np.ndarray,
         face_locations: List[FaceLocation],
+        is_rgb: bool = False,
     ) -> List[RecognitionResult]:
         """Match each detected face to a known student.
 
         Args:
-            frame: BGR image (from OpenCV).
+            frame: BGR or RGB image.
             face_locations: Bounding boxes as returned by ``FaceDetector``.
+            is_rgb: True if the frame is already in RGB format.
 
         Returns:
             List of result dicts, one per face:
@@ -77,7 +69,10 @@ class FaceRecognizer:
         if not self.encoding_manager.is_loaded:
             logger.warning("No encodings loaded – all faces will be Unknown.")
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if not is_rgb:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        else:
+            rgb_frame = frame
 
         # Compute encodings for the faces found in this frame
         frame_encodings = fr_lib.face_encodings(rgb_frame, face_locations)
@@ -98,13 +93,11 @@ class FaceRecognizer:
     ) -> RecognitionResult:
         """Compare a single face encoding against all known encodings.
 
-        Strategy (top‑K per‑student voting):
+        Strategy:
             1. Compute face distances to every known encoding.
-            2. Group distances by student name.
-            3. For each student, sort and take the best ``top_k`` distances.
-            4. Average those best distances → the student's "score".
-            5. Pick the student with the lowest average score.
-            6. Accept if that score ≤ tolerance.
+            2. Find the minimum distance.
+            3. If below tolerance, assign correct student name.
+            4. Else, Unknown.
         """
         known_encodings = self.encoding_manager.encodings
         known_names = self.encoding_manager.names
@@ -114,35 +107,23 @@ class FaceRecognizer:
 
         distances: np.ndarray = fr_lib.face_distance(known_encodings, encoding)
 
-        # ── Group distances by student ───────────────────────────────
-        student_distances: Dict[str, List[float]] = defaultdict(list)
-        for name, dist in zip(known_names, distances):
-            student_distances[name].append(float(dist))
+        # Find minimum distance
+        min_idx = np.argmin(distances)
+        min_dist = distances[min_idx]
+        best_name = known_names[min_idx]
 
-        # ── Best-K average per student ───────────────────────────────
-        best_name: Optional[str] = None
-        best_avg: float = float("inf")
+        similarity: float = self._distance_to_similarity(float(min_dist))
 
-        for name, dists in student_distances.items():
-            dists_sorted = sorted(dists)
-            top_k_dists = dists_sorted[: self.top_k]
-            avg_dist = sum(top_k_dists) / len(top_k_dists)
-            if avg_dist < best_avg:
-                best_avg = avg_dist
-                best_name = name
-
-        similarity: float = self._distance_to_similarity(best_avg)
-
-        if best_name is not None and best_avg <= self.tolerance:
+        if min_dist <= self.tolerance:
             return {
                 "name": best_name,
                 "known": True,
                 "similarity": similarity,
-                "distance": best_avg,
+                "distance": float(min_dist),
                 "location": location,
             }
 
-        return self._unknown_result(location, best_avg, similarity)
+        return self._unknown_result(location, float(min_dist), similarity)
 
     def _distance_to_similarity(self, distance: float) -> float:
         """Convert face distance to an intuitive similarity percentage.
