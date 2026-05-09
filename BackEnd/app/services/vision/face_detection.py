@@ -11,7 +11,7 @@ import logging
 from typing import List, Optional, Tuple
 
 import cv2
-import face_recognition
+import face_recognition as fr_lib
 import numpy as np
 
 from app.core.config import settings
@@ -46,7 +46,7 @@ class FaceDetector:
             return []
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        locations: List[FaceLocation] = face_recognition.face_locations(
+        locations: List[FaceLocation] = fr_lib.face_locations(
             rgb_frame, model=self.model
         )
 

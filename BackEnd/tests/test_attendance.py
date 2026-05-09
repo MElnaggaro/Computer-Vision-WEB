@@ -9,10 +9,15 @@ Covers:
     • Session reset
 """
 
-from __future__ import annotations
+import sys
+from pathlib import Path
+
+# ── Ensure BackEnd/ is on sys.path when run directly ─────────────────
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
 
 import json
-from pathlib import Path
 
 import pytest
 

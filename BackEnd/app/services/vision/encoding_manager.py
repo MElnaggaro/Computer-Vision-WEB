@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
-import face_recognition
+import face_recognition as fr_lib
 import numpy as np
 
 from app.core.config import settings
@@ -186,7 +186,13 @@ class EncodingManager:
     # ── Internal helpers ─────────────────────────────────────────────
 
     def _encode_image(self, image_path: Path) -> Optional[np.ndarray]:
-        """Load an image and return its first face encoding, or ``None``."""
+        """Load an image and return its first face encoding, or ``None``.
+
+        Uses ``num_jitters=3`` to re‑sample the face multiple times and
+        average the result, producing more accurate encodings at the cost
+        of slightly longer build time (~3× slower per image, but only
+        runs once).
+        """
         # Use cv2 to read → convert to RGB (face_recognition expects RGB)
         img_bgr = cv2.imread(str(image_path))
         if img_bgr is None:
@@ -194,7 +200,7 @@ class EncodingManager:
             return None
 
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        encodings = face_recognition.face_encodings(img_rgb)
+        encodings = fr_lib.face_encodings(img_rgb, num_jitters=3)
 
         if not encodings:
             return None

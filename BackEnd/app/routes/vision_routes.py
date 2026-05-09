@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from app.services.vision.attendance_service import AttendanceService
 from app.services.vision.encoding_manager import EncodingManager
 from app.services.vision.face_detection import FaceDetector
-from app.services.vision.face_recognition import FaceRecognizer
+from app.services.vision.face_recognizer import FaceRecognizer
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
