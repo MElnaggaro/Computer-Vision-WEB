@@ -52,17 +52,37 @@ class Settings(BaseSettings):
     MIN_FACE_SHARPNESS: float = 30.0             # Laplacian variance threshold
     NUM_JITTERS: int = 3                         # jitters for encoding accuracy
 
-    # ── Temporal stabilization ───────────────────────────────────────
+    # ── Temporal stabilization (instant mode) ─────────────────────────
+    # With threshold=1 + stable_frames=1, attendance fires on the VERY
+    # FIRST frame where face_distance < 0.45.  The strict distance
+    # threshold already prevents false positives, and the in-memory
+    # _marked set prevents duplicates — so there is no need for
+    # additional artificial delay.
     TRACK_HISTORY_SIZE: int = 10                 # frames of recognition history
-    TRACK_STABILITY_THRESHOLD: int = 6           # votes needed for stable ID
+    TRACK_STABILITY_THRESHOLD: int = 1           # votes needed for stable ID
     TRACK_MAX_MISSED_FRAMES: int = 10            # frames before dropping a track
     TRACK_IOU_THRESHOLD: float = 0.25            # IoU for cross‑frame matching
-    ATTENDANCE_STABLE_FRAMES: int = 10           # stable frames before marking
+    ATTENDANCE_STABLE_FRAMES: int = 1            # stable frames before marking
 
     # ── Emotion detection ────────────────────────────────────────────
-    EMOTION_DETECTION_INTERVAL: int = 5          # run detector every N recognition frames
+    EMOTION_DETECTION_INTERVAL: int = 3          # run detector every N recognition frames
     EMOTION_BUFFER_SIZE: int = 10                # smoothing window (majority-vote frames)
     EMOTION_MAX_STALE_FRAMES: int = 30           # drop buffer after N missed frames
+
+    # ── Registration / Admin approval ───────────────────────────────
+    # WARNING: For production deployments, override ADMIN_CODEWORD via
+    # the ``.env`` file or an environment variable rather than committing
+    # a real secret to source control.
+    ADMIN_CODEWORD: str = "aiu"
+    REGISTRATION_MIN_IMAGES: int = 5
+    REGISTRATION_MAX_IMAGES: int = 10
+    REGISTRATION_NAME_PATTERN: str = r"^[A-Za-z]+_[A-Za-z]+$"
+
+    # ── Emotion stability ────────────────────────────────────────────
+    # Emotion averaging threshold — how many samples before the emotion
+    # label is considered reliable.  Attendance is NOT gated on this;
+    # emotion is purely an async overlay that updates after attendance.
+    EMOTION_MIN_STABLE_SAMPLES: int = 5
 
     model_config = SettingsConfigDict(
         case_sensitive=True,

@@ -93,37 +93,73 @@ class FaceRecognizer:
     ) -> RecognitionResult:
         """Compare a single face encoding against all known encodings.
 
-        Strategy:
-            1. Compute face distances to every known encoding.
+        Strategy (Two-Phase):
+            PHASE 1 (FAST MATCH):
+            1. Compute face distances to ONE representative vector (mean) per student.
             2. Find the minimum distance.
-            3. If below tolerance, assign correct student name.
-            4. Else, Unknown.
+            3. If below tolerance, tentatively accept.
+            
+            PHASE 2 (OPTIONAL VERIFICATION):
+            4. If accepted, verify against detailed student embeddings.
+            5. If still accepted, assign correct student name.
+            6. Else, Unknown.
         """
         known_encodings = self.encoding_manager.encodings
         known_names = self.encoding_manager.names
 
         if not known_encodings:
+            logger.warning("No known encodings — returning Unknown.")
             return self._unknown_result(location, distance=1.0, similarity=0.0)
 
+        # ── PHASE 1: Fast Match ──────────────────────────────────────
         distances: np.ndarray = fr_lib.face_distance(known_encodings, encoding)
 
-        # Find minimum distance
+        # Find minimum distance across representative encodings
         min_idx = np.argmin(distances)
-        min_dist = distances[min_idx]
+        min_dist = float(distances[min_idx])
         best_name = known_names[min_idx]
 
-        similarity: float = self._distance_to_similarity(float(min_dist))
+        accepted = min_dist <= self.tolerance
 
-        if min_dist <= self.tolerance:
+        # ── PHASE 2: Detailed Verification ───────────────────────────
+        if accepted:
+            detailed_encs = self.encoding_manager.get_detailed_encodings_for(best_name)
+            if detailed_encs:
+                detailed_distances = fr_lib.face_distance(detailed_encs, encoding)
+                best_detailed_dist = float(np.min(detailed_distances))
+                # Use the best distance from detailed encodings for the final score
+                min_dist = min(min_dist, best_detailed_dist)
+                accepted = min_dist <= self.tolerance
+
+        similarity: float = self._distance_to_similarity(min_dist)
+
+        # ── Debug output ─────────────────────────────────────
+        print("\n" + "-" * 30)
+        print("Detected face")
+        print(f"Known students checked: {len(known_encodings)}")
+        print(f"Best match: {best_name}")
+        print(f"Distance: {min_dist:.4f}")
+        print(f"Threshold: {self.tolerance:.2f}")
+        print(f"Accepted: {'YES' if accepted else 'NO'}")
+        if not accepted:
+            print("Result: Unknown")
+        print("-" * 30)
+
+        logger.info(
+            "Face match: best=%s dist=%.4f threshold=%.2f accepted=%s (students checked=%d)",
+            best_name, min_dist, self.tolerance, accepted, len(known_encodings),
+        )
+
+        if accepted:
             return {
                 "name": best_name,
                 "registered": True,
                 "similarity": similarity,
-                "distance": float(min_dist),
+                "distance": min_dist,
                 "location": location,
             }
 
-        return self._unknown_result(location, float(min_dist), similarity)
+        return self._unknown_result(location, min_dist, similarity)
 
     def _distance_to_similarity(self, distance: float) -> float:
         """Convert face distance to an intuitive similarity percentage.

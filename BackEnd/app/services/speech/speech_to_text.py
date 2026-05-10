@@ -18,6 +18,7 @@ Dependencies::
 from __future__ import annotations
 
 import logging
+import traceback
 from dataclasses import dataclass
 from typing import Optional
 
@@ -145,10 +146,16 @@ class SpeechRecognizer:
                 language=self.language,
             )
         except sr.UnknownValueError:
-            logger.warning("Google API could not understand the audio.")
+            logger.warning(
+                "Google API could not understand the audio.", exc_info=True
+            )
             raise SpeechNotUnderstoodError("Audio was not clear enough to transcribe.")
         except sr.RequestError as exc:
-            logger.error("Google Speech API request failed: %s", exc)
+            logger.error(
+                "Google Speech API request failed: %s\n%s",
+                exc,
+                traceback.format_exc(),
+            )
             raise SpeechAPIError(f"Google API error: {exc}") from exc
 
         text = text.strip()
@@ -156,6 +163,57 @@ class SpeechRecognizer:
         print(f"\nRecognized text:\n{text}")
 
         return SpeechResult(text=text, language=self.language)
+
+
+# ── Audio-data (browser upload) transcription ───────────────────────
+
+
+def transcribe_audio_data(
+    audio: sr.AudioData,
+    language: str = "en-US",
+) -> SpeechResult:
+    """Transcribe a pre-decoded :class:`sr.AudioData` via Google.
+
+    Used by ``POST /api/v1/speech/transcribe-audio`` when the
+    frontend uploads audio it captured itself (MediaRecorder) and the
+    server side never opens its own microphone.
+
+    Args:
+        audio:    The decoded audio data.
+        language: BCP-47 language tag.
+
+    Returns:
+        :class:`SpeechResult` containing the transcribed text.
+
+    Raises:
+        SpeechNotUnderstoodError: Audio captured but unintelligible.
+        SpeechAPIError: Google API failure (network, blocked, …).
+    """
+    rec = sr.Recognizer()
+    logger.info(
+        "transcribe_audio_data: rate=%s width=%s frame_bytes=%d",
+        audio.sample_rate,
+        audio.sample_width,
+        len(audio.frame_data),
+    )
+    try:
+        text: str = rec.recognize_google(audio, language=language)
+    except sr.UnknownValueError:
+        logger.warning(
+            "Google API could not understand uploaded audio.", exc_info=True
+        )
+        raise SpeechNotUnderstoodError("Audio was not clear enough to transcribe.")
+    except sr.RequestError as exc:
+        logger.error(
+            "Google Speech API request failed for uploaded audio: %s\n%s",
+            exc,
+            traceback.format_exc(),
+        )
+        raise SpeechAPIError(f"Google API error: {exc}") from exc
+
+    text = (text or "").strip()
+    logger.info("Recognised uploaded audio: %s", text)
+    return SpeechResult(text=text, language=language)
 
 
 # ── Backwards-compatible convenience function ────────────────────────

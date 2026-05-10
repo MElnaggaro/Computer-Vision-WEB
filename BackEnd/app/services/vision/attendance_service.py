@@ -86,6 +86,11 @@ class AttendanceService:
         self._events: List[EventRecord] = []                 # chronological event log (session)
         self._student_state: Dict[str, AttendanceRecord] = {}  # per-student state
 
+        # Guest counter — incremented per "Continue as Guest" click so
+        # each unknown visitor gets a deterministic Guest_001, Guest_002, …
+        self._guest_counter: int = 0
+        self._guest_names: Set[str] = set()
+
         # Load students already present in the log file to prevent duplicates across runs
         self._load_existing_students()
 
@@ -93,14 +98,27 @@ class AttendanceService:
         """Populate the marked set from the existing log file."""
         try:
             existing = self._log_service.load_logs()
+            highest_guest = 0
             for record in existing:
                 event_type = record.get("event", "attendance")
                 if event_type == "attendance":
-                    name = record.get("student")
+                    name = record.get("student") or ""
                     registered = record.get("registered", False)
                     if name and registered and name != "Unknown":
                         self._marked.add(name)
-            logger.info("Loaded %d previously marked students.", len(self._marked))
+                    if name.startswith("Guest_"):
+                        self._guest_names.add(name)
+                        try:
+                            num = int(name.split("_", 1)[1])
+                            highest_guest = max(highest_guest, num)
+                        except (ValueError, IndexError):
+                            pass
+            self._guest_counter = highest_guest
+            logger.info(
+                "Loaded %d previously marked students, highest guest=%d.",
+                len(self._marked),
+                self._guest_counter,
+            )
         except Exception as exc:
             logger.warning("Could not pre-load attendance log: %s", exc)
 
@@ -175,6 +193,55 @@ class AttendanceService:
         )
         return student_record
 
+    def register_guest(self) -> AttendanceRecord:
+        """Allocate a new ``Guest_NNN`` identity and log a guest attendance event.
+
+        Called when the user clicks "Continue as Guest" on the dashboard.
+        Each call produces a new monotonically-increasing guest id
+        (``Guest_001``, ``Guest_002``, …) and persists an attendance
+        event with ``registered=False`` so the dashboard can render it
+        in the live feed and treat the guest like any tracked student
+        for question attribution.
+
+        Returns:
+            The persisted student record for the new guest.
+        """
+        self._guest_counter += 1
+        guest_name = f"Guest_{self._guest_counter:03d}"
+        # Defensive: in case a guest with this id was already saved
+        # (e.g. concurrent clicks), keep advancing.
+        while guest_name in self._guest_names:
+            self._guest_counter += 1
+            guest_name = f"Guest_{self._guest_counter:03d}"
+        self._guest_names.add(guest_name)
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        persisted_event = self._log_service.log_attendance_event(
+            student=guest_name,
+            attendance="Present",
+            registered=False,
+            timestamp=timestamp,
+        )
+        self._events.append(persisted_event)
+
+        student_record: AttendanceRecord = {
+            "student": guest_name,
+            "attendance": "Present",
+            "emotion": "Neutral",
+            "emotion_confidence": 0.0,
+            "timestamp": timestamp,
+            "registered": False,
+            "is_guest": True,
+            "questions": [],
+        }
+        self._student_state[guest_name] = student_record
+        logger.info("Guest registered: %s", guest_name)
+        return student_record
+
+    def is_guest(self, name: str) -> bool:
+        """Return True when ``name`` is a registered guest in this session."""
+        return bool(name) and name in self._guest_names
+
     def add_question(
         self,
         student_name: str,
@@ -190,7 +257,9 @@ class AttendanceService:
         array.
 
         Args:
-            student_name:    Name of the student who asked.
+            student_name:    Name of the student who asked.  Either a
+                             registered student name, a ``Guest_NNN``
+                             identity, or ``"Unknown"``.
             question:        The transcribed question text.
             topic:           NLP-classified topic.
             topic_confidence: Classification confidence (0–1).
@@ -202,8 +271,12 @@ class AttendanceService:
         """
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # Determine registered status
-        registered = student_name in self._marked if student_name != "Unknown" else False
+        # Determine registered status: registered students = True,
+        # guests + Unknown = False (but the event is still persisted).
+        if student_name in self._marked:
+            registered = True
+        else:
+            registered = False
 
         # ── Persist via LogService (append-only, immediate write) ────
         persisted_event = self._log_service.log_question_event(
@@ -211,7 +284,7 @@ class AttendanceService:
             question=question,
             topic=topic,
             classification_confidence=topic_confidence,
-            registered=registered if student_name != "Unknown" else False,
+            registered=registered,
             source=source or "webcam_push_to_talk",
             timestamp=timestamp,
         )
@@ -220,6 +293,21 @@ class AttendanceService:
         self._events.append(persisted_event)
 
         # ── Update per-student state ─────────────────────────────────
+        # Auto-create a state row for guests / unrecognised speakers so
+        # the question still surfaces in the per-student summary card.
+        if student_name and student_name not in self._student_state:
+            self._student_state[student_name] = {
+                "student": student_name,
+                "attendance": "Present" if registered else (
+                    "Guest" if student_name.startswith("Guest_") else "Unregistered"
+                ),
+                "emotion": "Neutral",
+                "emotion_confidence": 0.0,
+                "timestamp": timestamp,
+                "registered": registered,
+                "is_guest": student_name.startswith("Guest_"),
+                "questions": [],
+            }
         if student_name in self._student_state:
             self._student_state[student_name]["questions"].append({
                 "question": question,
@@ -305,8 +393,16 @@ class AttendanceService:
         return set(self._marked)
 
     def reset_session(self) -> None:
-        """Clear in-memory state for a fresh attendance session."""
+        """Clear in-memory state AND wipe the log file for a fresh session.
+
+        Called on server startup and via the ``reset-attendance`` API.
+        """
         self._marked.clear()
         self._events.clear()
         self._student_state.clear()
-        logger.info("Attendance session reset.")
+        self._guest_counter = 0
+        self._guest_names.clear()
+        # Wipe the log file so the frontend's seedEventCursor
+        # doesn't replay stale events from a prior run.
+        self._log_service._write_events([])
+        logger.info("Attendance session reset — log file cleared.")

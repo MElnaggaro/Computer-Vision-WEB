@@ -1,15 +1,25 @@
 // ============================================
-// MAIN APPLICATION SCRIPT
+// MAIN APPLICATION SCRIPT — OPTIMIZED
 // ============================================
 // Systems:
 //   1. Lenis smooth scrolling
 //   2. Custom cursor (dot + outline)
-//   3. Interactive background particles
+//   3. Interactive background particles (optimized)
 //   4. GSAP scroll animations
+//   5. Visibility API — pause when hidden
 // ============================================
 
 // Register GSAP Plugins
 gsap.registerPlugin(ScrollTrigger);
+
+// ============================================
+// 0. GLOBAL MOUSE STATE (single listener)
+// ============================================
+const gMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+window.addEventListener('mousemove', (e) => {
+    gMouse.x = e.clientX;
+    gMouse.y = e.clientY;
+}, { passive: true });
 
 
 // ============================================
@@ -25,7 +35,6 @@ const lenis = new Lenis({
     touchMultiplier: 2,
 });
 
-// Sync with GSAP ScrollTrigger
 lenis.on('scroll', ScrollTrigger.update);
 
 gsap.ticker.add((time) => {
@@ -35,48 +44,40 @@ gsap.ticker.lagSmoothing(0, 0);
 
 
 // ============================================
-// 2. CUSTOM CURSOR
+// 2. CUSTOM CURSOR (merged into GSAP ticker)
 // ============================================
 const cursorDot     = document.querySelector('.cursor-dot');
 const cursorOutline = document.querySelector('.cursor-outline');
 const hoverElements = document.querySelectorAll('[data-cursor="hover"]');
 
-// GSAP quickSetter for performance
 const setDotX     = gsap.quickSetter(cursorDot, "x", "px");
 const setDotY     = gsap.quickSetter(cursorDot, "y", "px");
 const setOutlineX = gsap.quickSetter(cursorOutline, "x", "px");
 const setOutlineY = gsap.quickSetter(cursorOutline, "y", "px");
 
-let mouse   = { x: 0, y: 0 };
 let outline = { x: 0, y: 0 };
 
-window.addEventListener('mousemove', (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-    setDotX(mouse.x);
-    setDotY(mouse.y);
-});
-
-// Smooth outline follow (lerp)
-const updateCursorOutline = () => {
-    const lerpFactor = 0.15;
-    outline.x += (mouse.x - outline.x) * lerpFactor;
-    outline.y += (mouse.y - outline.y) * lerpFactor;
+// Use GSAP ticker instead of separate rAF loop for cursor
+gsap.ticker.add(() => {
+    // Dot follows instantly (set in mousemove)
+    setDotX(gMouse.x);
+    setDotY(gMouse.y);
+    // Outline lerps
+    outline.x += (gMouse.x - outline.x) * 0.15;
+    outline.y += (gMouse.y - outline.y) * 0.15;
     setOutlineX(outline.x);
     setOutlineY(outline.y);
-    requestAnimationFrame(updateCursorOutline);
-};
-updateCursorOutline();
+});
 
 // Click scale effect
 window.addEventListener('mousedown', () => {
     gsap.to(cursorDot, { scale: 0.6, duration: 0.15, ease: 'power2.out' });
     gsap.to(cursorOutline, { scale: 0.8, duration: 0.15, ease: 'power2.out' });
-});
+}, { passive: true });
 window.addEventListener('mouseup', () => {
     gsap.to(cursorDot, { scale: 1, duration: 0.15, ease: 'power2.out' });
     gsap.to(cursorOutline, { scale: 1, duration: 0.15, ease: 'power2.out' });
-});
+}, { passive: true });
 
 // Hover effects
 hoverElements.forEach(el => {
@@ -100,74 +101,80 @@ document.addEventListener('mouseenter', () => {
 
 
 // ============================================
-// 3. INTERACTIVE BACKGROUND PARTICLES
+// 3. INTERACTIVE BACKGROUND — OPTIMIZED
 // ============================================
 const canvas = document.getElementById('bg-canvas');
-const ctx    = canvas.getContext('2d');
+const ctx    = canvas.getContext('2d', { alpha: true });
 let bgParticles = [];
-const BG_PARTICLE_COUNT = 70;
+const BG_PARTICLE_COUNT = 55; // reduced from 90
 
-// Mouse position for particle interaction
-let bgMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-window.addEventListener('mousemove', (e) => {
-    bgMouse.x = e.clientX;
-    bgMouse.y = e.clientY;
-});
-
+let canvasW = 0, canvasH = 0;
 const resizeCanvas = () => {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvasW = canvas.width  = window.innerWidth;
+    canvasH = canvas.height = window.innerHeight;
 };
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', resizeCanvas, { passive: true });
 resizeCanvas();
+
+// Pre-computed color strings for particles (avoid per-frame string concat)
+const PARTICLE_COLORS = [
+    { h: 197, s: 92, l: 60 },
+    { h: 231, s: 92, l: 74 },
+    { h: 263, s: 93, l: 77 },
+    { h: 190, s: 82, l: 65 },
+    { h: 330, s: 86, l: 70 },
+];
 
 class BgParticle {
     constructor() {
-        this.x      = Math.random() * canvas.width;
-        this.y      = Math.random() * canvas.height;
-        this.baseX  = this.x;
-        this.baseY  = this.y;
-        this.size   = Math.random() * 2 + 0.5;
-        this.speedX = Math.random() * 0.5 - 0.25;
-        this.speedY = Math.random() * -0.5 - 0.2;
-        this.opacity = Math.random() * 0.5 + 0.1;
-        // Blue/purple palette
-        this.hue = Math.random() > 0.6 ? 270 : 240;
+        this.x      = Math.random() * canvasW;
+        this.y      = Math.random() * canvasH;
+        this.size   = Math.random() * 2.2 + 0.4;
+        this.speedX = Math.random() * 0.4 - 0.2;
+        this.speedY = Math.random() * -0.45 - 0.15;
+        this.opacity = Math.random() * 0.55 + 0.08;
+        this.pulseOffset = Math.random() * Math.PI * 2;
+        const c = PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
+        this.h = c.h; this.s = c.s; this.l = c.l;
+        // Pre-build color base strings
+        this._colorBase = `${c.h}, ${c.s}%, ${c.l}%`;
+        this.currentOpacity = this.opacity;
     }
 
-    update() {
+    update(time) {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        // Mouse attraction — subtle distortion
-        const dx = bgMouse.x - this.x;
-        const dy = bgMouse.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const maxDist = 200;
+        // Breathing (simplified — every 2nd frame skip is handled externally)
+        this.currentOpacity = this.opacity * (Math.sin(time * 0.001 + this.pulseOffset) * 0.15 + 1);
 
-        if (dist < maxDist) {
-            const force = (maxDist - dist) / maxDist;
-            this.x += dx * force * 0.008;
-            this.y += dy * force * 0.008;
+        // Mouse attraction (use squared distance to avoid sqrt)
+        const dx = gMouse.x - this.x;
+        const dy = gMouse.y - this.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < 48400) { // 220^2
+            const force = (48400 - distSq) / 48400 * 0.01;
+            this.x += dx * force;
+            this.y += dy * force;
         }
 
         // Wrap around
-        if (this.y < 0) this.y = canvas.height;
-        if (this.x < 0) this.x = canvas.width;
-        if (this.x > canvas.width) this.x = 0;
+        if (this.y < -10) this.y = canvasH + 10;
+        if (this.x < -10) this.x = canvasW + 10;
+        if (this.x > canvasW + 10) this.x = -10;
     }
 
     draw() {
-        // Core dot
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity})`;
-        ctx.fill();
-
+        const op = this.currentOpacity;
         // Glow halo
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity * 0.08})`;
+        ctx.arc(this.x, this.y, this.size * 5, 0, 6.2832);
+        ctx.fillStyle = `hsla(${this._colorBase}, ${(op * 0.06).toFixed(3)})`;
+        ctx.fill();
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 6.2832);
+        ctx.fillStyle = `hsla(${this._colorBase}, ${op.toFixed(3)})`;
         ctx.fill();
     }
 }
@@ -179,44 +186,123 @@ const initBgParticles = () => {
     }
 };
 
-// Draw subtle connections between nearby particles
+// Spatial grid for O(n) connection checks instead of O(n²)
+const GRID_SIZE = 160;
 const drawBgConnections = () => {
-    for (let i = 0; i < bgParticles.length; i++) {
-        for (let j = i + 1; j < bgParticles.length; j++) {
-            const dx = bgParticles[i].x - bgParticles[j].x;
-            const dy = bgParticles[i].y - bgParticles[j].y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+    const cols = Math.ceil(canvasW / GRID_SIZE) + 1;
+    const rows = Math.ceil(canvasH / GRID_SIZE) + 1;
+    const grid = new Array(cols * rows);
 
-            if (dist < 150) {
-                ctx.beginPath();
-                ctx.moveTo(bgParticles[i].x, bgParticles[i].y);
-                ctx.lineTo(bgParticles[j].x, bgParticles[j].y);
-                ctx.strokeStyle = `rgba(79, 70, 229, ${0.04 * (1 - dist / 150)})`;
-                ctx.lineWidth = 0.5;
-                ctx.stroke();
+    // Place particles in grid cells
+    for (let i = 0; i < bgParticles.length; i++) {
+        const p = bgParticles[i];
+        const col = Math.floor(p.x / GRID_SIZE);
+        const row = Math.floor(p.y / GRID_SIZE);
+        const idx = row * cols + col;
+        if (idx >= 0 && idx < grid.length) {
+            if (!grid[idx]) grid[idx] = [];
+            grid[idx].push(p);
+        }
+    }
+
+    // Check only neighboring cells
+    ctx.lineWidth = 0.5;
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+            const cell = grid[row * cols + col];
+            if (!cell) continue;
+
+            // Check this cell + right + bottom + bottom-right neighbors
+            const neighbors = [
+                cell,
+                col + 1 < cols ? grid[row * cols + col + 1] : null,
+                row + 1 < rows ? grid[(row + 1) * cols + col] : null,
+                (col + 1 < cols && row + 1 < rows) ? grid[(row + 1) * cols + col + 1] : null,
+            ];
+
+            for (let ni = 0; ni < neighbors.length; ni++) {
+                const ncell = neighbors[ni];
+                if (!ncell) continue;
+                const startJ = (ncell === cell) ? 0 : 0;
+                for (let ci = 0; ci < cell.length; ci++) {
+                    const p1 = cell[ci];
+                    const jStart = (ncell === cell) ? ci + 1 : 0;
+                    for (let cj = jStart; cj < ncell.length; cj++) {
+                        const p2 = ncell[cj];
+                        const dx = p1.x - p2.x;
+                        const dy = p1.y - p2.y;
+                        const distSq = dx * dx + dy * dy;
+                        if (distSq < 25600) { // 160^2
+                            const dist = Math.sqrt(distSq);
+                            const alpha = 0.05 * (1 - dist / 160);
+                            ctx.beginPath();
+                            ctx.moveTo(p1.x, p1.y);
+                            ctx.lineTo(p2.x, p2.y);
+                            ctx.strokeStyle = `rgba(56, 189, 248, ${alpha.toFixed(3)})`;
+                            ctx.stroke();
+                        }
+                    }
+                }
             }
         }
     }
 };
 
+// Visibility API — pause animation when tab is hidden
+let bgPaused = false;
+document.addEventListener('visibilitychange', () => {
+    bgPaused = document.hidden;
+    if (!bgPaused) requestAnimationFrame(animateBgParticles);
+});
+
+let bgFrame = 0;
 const animateBgParticles = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (bgPaused) return;
 
-    // Central radial gradient
-    const gradient = ctx.createRadialGradient(
-        canvas.width / 2, canvas.height / 2, 0,
-        canvas.width / 2, canvas.height / 2, canvas.width * 0.7
+    const now = performance.now();
+    ctx.clearRect(0, 0, canvasW, canvasH);
+
+    // Aurora layer 1 — only redraw every 2nd frame for performance
+    bgFrame++;
+    if (bgFrame % 2 === 0) {
+        const g1 = ctx.createRadialGradient(
+            canvasW * 0.5, canvasH * 0.15, 0,
+            canvasW * 0.5, canvasH * 0.15, canvasW * 0.6
+        );
+        g1.addColorStop(0, 'rgba(56, 189, 248, 0.05)');
+        g1.addColorStop(0.4, 'rgba(129, 140, 248, 0.03)');
+        g1.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g1;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Aurora layer 2
+        const shift = Math.sin(now * 0.0003) * 0.1 + 0.75;
+        const g2 = ctx.createRadialGradient(
+            canvasW * shift, canvasH * 0.85, 0,
+            canvasW * shift, canvasH * 0.85, canvasW * 0.5
+        );
+        g2.addColorStop(0, 'rgba(167, 139, 250, 0.04)');
+        g2.addColorStop(0.5, 'rgba(129, 140, 248, 0.02)');
+        g2.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g2;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+    }
+
+    // Cursor spotlight — every frame (cheap single gradient)
+    const g3 = ctx.createRadialGradient(
+        gMouse.x, gMouse.y, 0, gMouse.x, gMouse.y, 280
     );
-    gradient.addColorStop(0, 'rgba(79, 70, 229, 0.04)');
-    gradient.addColorStop(0.5, 'rgba(147, 51, 234, 0.02)');
-    gradient.addColorStop(1, 'rgba(5, 5, 5, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    g3.addColorStop(0, 'rgba(56, 189, 248, 0.04)');
+    g3.addColorStop(0.5, 'rgba(129, 140, 248, 0.015)');
+    g3.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g3;
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
-    bgParticles.forEach(p => {
-        p.update();
-        p.draw();
-    });
+    // Update and draw particles
+    for (let i = 0; i < bgParticles.length; i++) {
+        bgParticles[i].update(now);
+        bgParticles[i].draw();
+    }
 
     drawBgConnections();
 
@@ -287,11 +373,9 @@ window.playHeroAnimation = () => {
     }, "-=0.4");
 };
 
-// Animations are deferred until the intro completes
-
+// Animations deferred until intro completes
 window.addEventListener('intro:complete', () => {
 
-    // ─── Features Section ───
     gsap.fromTo('.feature-card',
         { y: 60, opacity: 0 },
         {
@@ -308,7 +392,6 @@ window.addEventListener('intro:complete', () => {
         }
     );
 
-    // ─── Workflow Pipeline ───
     const workflowTl = gsap.timeline({
         scrollTrigger: {
             trigger: '.workflow',
@@ -337,7 +420,6 @@ window.addEventListener('intro:complete', () => {
         '-=0.5'
     );
 
-    // ─── Impact Section ───
     gsap.fromTo('.impact-item',
         { x: -40, opacity: 0 },
         {
@@ -354,7 +436,6 @@ window.addEventListener('intro:complete', () => {
         }
     );
 
-    // ─── CTA / Final Section ───
     gsap.fromTo('.cta-box',
         { scale: 0.95, opacity: 0, y: 40 },
         {
@@ -371,7 +452,6 @@ window.addEventListener('intro:complete', () => {
         }
     );
 
-    // ─── Section titles reveal ───
     gsap.utils.toArray('.section-title').forEach(title => {
         gsap.fromTo(title,
             { y: 30, opacity: 0 },
@@ -408,3 +488,6 @@ window.addEventListener('intro:complete', () => {
     });
 
 });
+
+// Expose gMouse for other scripts
+window.gMouse = gMouse;

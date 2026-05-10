@@ -34,13 +34,14 @@
     camera.position.set(0, 0, 5);
     camera.lookAt(0, 0, 0);
 
-    // ─── Renderer ───
+    // ─── Renderer (optimized) ───
     const renderer = new THREE.WebGLRenderer({
         alpha: true,
-        antialias: true
+        antialias: false, // big GPU savings
+        powerPreference: 'high-performance'
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // capped DPR
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     renderer.outputEncoding = THREE.sRGBEncoding;
@@ -49,35 +50,23 @@
 
 
     // ============================================
-    // LIGHTING — AI/FUTURISTIC STYLE
+    // LIGHTING — OPTIMIZED (5 lights instead of 9)
     // ============================================
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(5, 5, 5);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    dirLight.position.set(3, 4, 5);
     scene.add(dirLight);
 
-    const extraLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    extraLight.position.set(2, 2, 5);
-    scene.add(extraLight);
-
-    const bluePoint = new THREE.PointLight(0x4F46E5, 2.5, 20);
+    const bluePoint = new THREE.PointLight(0x38BDF8, 2.5, 20);
     bluePoint.position.set(-4, 3, 4);
     scene.add(bluePoint);
 
-    const purplePoint = new THREE.PointLight(0x9333EA, 2.5, 20);
+    const purplePoint = new THREE.PointLight(0x818CF8, 2.5, 20);
     purplePoint.position.set(4, -2, 3);
     scene.add(purplePoint);
-
-    const rimLight = new THREE.PointLight(0xEC4899, 1.5, 15);
-    rimLight.position.set(0, 0, -5);
-    scene.add(rimLight);
-
-    const fillLight = new THREE.PointLight(0x4F46E5, 0.8, 12);
-    fillLight.position.set(0, -4, 2);
-    scene.add(fillLight);
 
     // Extra highlight for camera model (starts dim, activates on swap)
     const cameraHighlight = new THREE.SpotLight(0xFFE4B5, 0, 18, Math.PI / 6, 0.5, 1);
@@ -85,15 +74,10 @@
     scene.add(cameraHighlight);
     scene.add(cameraHighlight.target);
 
-    // Warm specular rim for camera model reflections
+    // Warm rim reused for camera model
     const warmRim = new THREE.PointLight(0xFFA726, 0, 14);
     warmRim.position.set(-3, 2, -3);
     scene.add(warmRim);
-
-    // Focused light for tiny model
-    const pointLight = new THREE.PointLight(0xffffff, 2);
-    pointLight.position.set(0, 0, 2);
-    scene.add(pointLight);
 
 
     // ============================================
@@ -497,12 +481,18 @@
     let currentDemoStateId = null;
     let scrollEnabled = false;
 
-    window.addEventListener('intro:complete', () => {
-        scrollEnabled = true;
-    });
-
+    // Throttled scroll handler using rAF
+    let scrollTicking = false;
     window.addEventListener('scroll', () => {
-        if (!scrollEnabled) return;
+        if (!scrollEnabled || scrollTicking) return;
+        scrollTicking = true;
+        requestAnimationFrame(() => {
+            handleScroll();
+            scrollTicking = false;
+        });
+    }, { passive: true });
+
+    function handleScroll() {
 
         // ─── PRE-SWITCH: AIU model follows main page sections ───
         if (!switched && !transitionInProgress) {
@@ -591,56 +581,63 @@
                 }
             }
         }
-    });
+    }
 
 
     // ============================================
-    // MOUSE INTERACTION — PARALLAX (BOTH MODELS)
+    // MOUSE INTERACTION — USE SHARED gMouse
     // ============================================
     const mouseTarget  = { x: 0, y: 0 };
     const mouseCurrent = { x: 0, y: 0 };
     const MOUSE_LERP   = 0.06;
     const MOUSE_RANGE  = 0.3;
 
-    window.addEventListener('mousemove', (e) => {
-        mouseTarget.x = (e.clientX / window.innerWidth) * 2 - 1;
-        mouseTarget.y = (e.clientY / window.innerHeight) * 2 - 1;
-    });
+    // No new mousemove listener — read from window.gMouse
 
 
     // ============================================
-    // ANIMATION LOOP
+    // ANIMATION LOOP — WITH VISIBILITY PAUSE
     // ============================================
     const idleTime = { value: 0 };
+    let threePaused = false;
+
+    document.addEventListener('visibilitychange', () => {
+        threePaused = document.hidden;
+        if (!threePaused) { clock.getDelta(); animate(); }
+    });
+
+    window.addEventListener('intro:complete', () => {
+        scrollEnabled = true;
+    });
 
     function applyBaseAnimation(model, time, delta, rotSpeed) {
-        // Use delta time for frame-rate independent smooth rotation
-        // Normalize against typical 60fps (1/60s) for consistent values
         model.rotation.y += rotSpeed * (delta * 60);
         model.position.y = Math.sin(time) * 0.08;
     }
 
     const animate = () => {
+        if (threePaused) return;
         requestAnimationFrame(animate);
 
         const delta = clock.getDelta();
         idleTime.value += delta;
 
-        // Update embedded animations
         if (aiuMixer) aiuMixer.update(delta);
         if (cameraMixer) cameraMixer.update(delta);
 
-        // ─── AIU Model: Base Idle ───
         if (aiuModel && aiuGroup.visible) {
             applyBaseAnimation(aiuModel, idleTime.value, delta, 0.002);
         }
 
-        // ─── Camera Model: Faster Base Idle ───
         if (cameraModel && cameraModel.visible) {
             applyBaseAnimation(cameraModel, idleTime.value, delta, 0.007);
         }
 
-        // ─── Mouse Parallax (smooth lerp) — BOTH models ───
+        // Read from shared gMouse (no duplicate listener)
+        const gm = window.gMouse || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        mouseTarget.x = (gm.x / window.innerWidth) * 2 - 1;
+        mouseTarget.y = (gm.y / window.innerHeight) * 2 - 1;
+
         mouseCurrent.x += (mouseTarget.x - mouseCurrent.x) * MOUSE_LERP;
         mouseCurrent.y += (mouseTarget.y - mouseCurrent.y) * MOUSE_LERP;
 
@@ -654,14 +651,12 @@
             cameraParallaxGroup.rotation.y += (mouseCurrent.x * MOUSE_RANGE - cameraParallaxGroup.rotation.y) * 0.1;
         }
 
-        // ─── Animate accent lights subtly ───
         const lightTime = idleTime.value * 0.5;
         bluePoint.position.x  = -4 + Math.sin(lightTime) * 0.5;
         bluePoint.position.y  = 3 + Math.cos(lightTime * 0.8) * 0.3;
         purplePoint.position.x = 4 + Math.cos(lightTime * 0.7) * 0.5;
         purplePoint.position.y = -2 + Math.sin(lightTime * 0.9) * 0.3;
 
-        // Warm light orbit when camera model is active
         if (switched) {
             warmRim.position.x = -3 + Math.sin(lightTime * 0.6) * 1.0;
             warmRim.position.y = 2 + Math.cos(lightTime * 0.4) * 0.5;

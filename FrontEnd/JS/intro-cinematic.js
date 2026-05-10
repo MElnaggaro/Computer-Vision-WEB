@@ -30,17 +30,25 @@ const IntroSystem = (() => {
     });
 
     // ─── Background Particle System ───
+    const INTRO_COLORS = [
+        { h: 197, s: 92, l: 60 },
+        { h: 231, s: 92, l: 74 },
+        { h: 263, s: 93, l: 77 },
+        { h: 190, s: 82, l: 65 },
+    ];
+
     class Particle {
         constructor() {
             this.x = Math.random() * introCanvas.width;
             this.y = Math.random() * introCanvas.height;
-            this.size = Math.random() * 1.5 + 0.5;
+            this.size = Math.random() * 1.8 + 0.5;
             this.vx = (Math.random() - 0.5) * 0.15;
             this.vy = (Math.random() - 0.5) * 0.15;
-            this.baseAlpha = Math.random() * 0.3 + 0.05;
+            this.baseAlpha = Math.random() * 0.35 + 0.05;
+            const c = INTRO_COLORS[Math.floor(Math.random() * INTRO_COLORS.length)];
+            this.h = c.h; this.s = c.s; this.l = c.l;
         }
         update() {
-            // Subtle reaction to mouse
             const dx = mouse.x - this.x;
             const dy = mouse.y - this.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
@@ -59,16 +67,22 @@ const IntroSystem = (() => {
             if (this.y > introCanvas.height) this.y = 0;
         }
         draw() {
+            // Glow
+            introCtx.beginPath();
+            introCtx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
+            introCtx.fillStyle = `hsla(${this.h}, ${this.s}%, ${this.l}%, ${this.baseAlpha * 0.08})`;
+            introCtx.fill();
+            // Core
             introCtx.beginPath();
             introCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            introCtx.fillStyle = `rgba(255, 255, 255, ${this.baseAlpha})`;
+            introCtx.fillStyle = `hsla(${this.h}, ${this.s}%, ${this.l}%, ${this.baseAlpha})`;
             introCtx.fill();
         }
     }
 
     const initParticles = () => {
         particles = [];
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 60; i++) {
             particles.push(new Particle());
         }
     };

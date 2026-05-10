@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:\\\\Users\\\\nonok\\\\.claude\\\\projects\\\\D--PROJECTS-Computer-Vision-PROJECT\\\\memory\")",
+      "Bash(dir D:\\\\PROJECTS\\\\Computer-Vision-PROJECT)",
+      "Bash(python -m pytest tests/test_registration.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_api_routes.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_vision.py --tb=short)",
+      "Bash(python -m pytest tests/test_full_integration.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_speech.py tests/test_nlp.py --tb=short)",
+      "Bash(python -m pytest tests/test_speech.py --tb=short)",
+      "Bash(python -m pytest tests/test_nlp.py --tb=line)",
+      "Bash(python -m pytest tests/test_nlp.py --tb=line -q)",
+      "Bash(python -u BackEnd/run.py --no-browser --backend-port 8765 --frontend-port 5765 --health-timeout 30)",
+      "Bash(python -m pytest tests/test_vision.py tests/test_speech.py tests/test_registration.py tests/test_api_routes.py tests/test_full_integration.py -q)",
+      "Bash(python -m pytest tests/test_full_pipeline.py tests/test_api_routes.py tests/test_full_integration.py -q --tb=short)",
+      "Bash(findstr /R /C:\"PASS\" /C:\"FAIL\" /C:\"ERROR\" /C:\"passed\" /C:\"failed\" /C:\"error\")",
+      "Bash(powershell *)",
+      "Bash(python -c \"import cv2; print\\('cv2:', cv2.__version__\\); print\\('TrackerKCF_create:', hasattr\\(cv2, 'TrackerKCF_create'\\)\\); print\\('legacy:', hasattr\\(cv2, 'legacy'\\)\\)\")",
+      "Bash(python -c \"import pickle, numpy as np; d = pickle.load\\(open\\('data/encodings/face_encodings.pkl','rb'\\)\\); print\\('names:', len\\(d['names']\\), '| unique:', len\\(set\\(d['names']\\)\\)\\); print\\('encodings:', len\\(d['encodings']\\), 'each shape:', np.asarray\\(d['encodings'][0]\\).shape\\)\")",
+      "Bash(python -m pytest tests/test_guest_question_flow.py tests/test_question_identity.py tests/test_speech_routes.py tests/test_speech_nlp.py -x -q)",
+      "Bash(python -m pytest tests/test_attendance.py tests/test_full_integration.py tests/test_integration_nlp_speech.py tests/test_speech.py tests/test_api_routes.py -q --deselect tests/test_integration_nlp_speech.py::TestVoicePipeline)",
+      "Bash(python -m pytest tests/test_api_routes.py::TestInteraction::test_ask_question_text_mode -q)",
+      "Bash(python -m pytest tests/test_guest_question_flow.py tests/test_question_identity.py tests/test_speech_routes.py tests/test_speech_nlp.py tests/test_api_routes.py tests/test_full_integration.py tests/test_attendance.py -q)",
+      "Bash(python -m pytest tests/ -q --ignore=tests/test_nlp.py --ignore=tests/test_nlp_accuracy.py --ignore=tests/test_full_pipeline.py --ignore=tests/test_live_camera.py --ignore=tests/test_emotion_detection.py --ignore=tests/test_face_recognition.py --ignore=tests/test_vision.py --ignore=tests/test_integration_vision_emotion.py --ignore=tests/test_registration.py)",
+      "Bash(python -m pytest tests/test_attendance.py tests/test_speech.py tests/test_integration_nlp_speech.py tests/test_full_integration.py tests/test_api_routes.py tests/test_guest_question_flow.py tests/test_question_identity.py tests/test_speech_routes.py tests/test_speech_nlp.py -q --deselect tests/test_integration_nlp_speech.py::TestVoicePipeline)",
+      "Bash(python -c \"from app.main import app; print\\('imports OK'\\); print\\([r.path for r in app.routes if hasattr\\(r, 'path'\\)]\\)\")",
+      "Bash(node -c JS/dashboard.js)",
+      "Bash(python -m pytest tests/test_attendance.py tests/test_speech.py tests/test_full_integration.py tests/test_api_routes.py tests/test_guest_question_flow.py tests/test_question_identity.py tests/test_speech_routes.py tests/test_speech_nlp.py -q)",
+      "Bash(python -c \"import speech_recognition as sr; help\\(sr.AudioFile.__init__\\)\")",
+      "Bash(where ffmpeg *)",
+      "Bash(python *)"
+    ]
+  }
+}

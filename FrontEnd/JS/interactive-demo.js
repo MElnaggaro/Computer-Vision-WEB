@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 videoElement.srcObject = cameraStream;
                 videoElement.style.display = 'block';
+                videoElement.style.transform = 'scaleX(-1)'; // natural mirror fix
                 cameraPlaceholder.style.display = 'none';
                 
                 cameraToggleBtn.textContent = 'Stop Camera';
