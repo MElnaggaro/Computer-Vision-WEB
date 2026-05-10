@@ -190,10 +190,10 @@ class ClassroomCamera:
 
         # Mark attendance for each recognised stable face
         for result in stable_results:
-            if result.get("attendance_ready") and result.get("known"):
+            if result.get("attendance_ready") and result.get("registered"):
                 self.attendance_service.mark_attendance(
                     name=result["name"],
-                    known=result["known"],
+                    registered=result["registered"],
                     similarity=result.get("similarity", 0.0),
                 )
                 
@@ -320,12 +320,12 @@ class ClassroomCamera:
             top, right, bottom, left = location
             name = result.get("name", "Unknown")
             similarity = result.get("similarity", 0.0)
-            known = result.get("known", False)
+            registered = result.get("registered", False)
             stable = result.get("stable", False)
 
             if stable:
-                color = _COLOR_KNOWN if known else _COLOR_UNKNOWN
-                label = f"{name} ({similarity:.0%})"
+                color = _COLOR_KNOWN if registered else _COLOR_UNKNOWN
+                label = name if registered else "Not Registered"
             else:
                 color = _COLOR_UNSTABLE
                 label = f"Detecting... ({similarity:.0%})"

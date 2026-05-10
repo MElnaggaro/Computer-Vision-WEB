@@ -45,29 +45,30 @@ class TestMarkAttendance:
 
     def test_mark_known_student(self, service: AttendanceService) -> None:
         """Marking a known student returns a valid record."""
-        record = service.mark_attendance("Mohammed_Ayman", known=True, similarity=0.92)
+        record = service.mark_attendance("Mohammed_Ayman", registered=True, similarity=0.92)
 
         assert record is not None
         assert record["student"] == "Mohammed_Ayman"
         assert record["attendance"] == "Present"
-        assert record["known"] is True
-        assert record["similarity"] == 0.92
+        assert record["registered"] is True
+        assert "similarity" not in record
         assert "timestamp" in record
 
     def test_mark_unknown_face(self, service: AttendanceService) -> None:
         """Marking an unknown face returns 'Not Registered'."""
-        record = service.mark_attendance("Unknown", known=False, similarity=0.21)
+        record = service.mark_attendance("Unknown", registered=False, similarity=0.21)
 
         assert record is not None
         assert record["student"] == "Unknown"
-        assert record["attendance"] == "Not Registered"
-        assert record["known"] is False
+        assert record["attendance"] == "Present"
+        assert record["registered"] is False
+        assert "similarity" not in record
 
     def test_multiple_unknowns_all_logged(self, service: AttendanceService) -> None:
         """Multiple unknown detections should ALL be logged (not de‑duped)."""
-        r1 = service.mark_attendance("Unknown", known=False, similarity=0.15)
-        r2 = service.mark_attendance("Unknown", known=False, similarity=0.10)
-        r3 = service.mark_attendance("Unknown", known=False, similarity=0.18)
+        r1 = service.mark_attendance("Unknown", registered=False, similarity=0.15)
+        r2 = service.mark_attendance("Unknown", registered=False, similarity=0.10)
+        r3 = service.mark_attendance("Unknown", registered=False, similarity=0.18)
 
         assert r1 is not None
         assert r2 is not None
@@ -84,8 +85,8 @@ class TestDuplicatePrevention:
         self, service: AttendanceService
     ) -> None:
         """Second call for the same known student should return None."""
-        first = service.mark_attendance("Noreen_Osama", known=True, similarity=0.88)
-        second = service.mark_attendance("Noreen_Osama", known=True, similarity=0.90)
+        first = service.mark_attendance("Noreen_Osama", registered=True, similarity=0.88)
+        second = service.mark_attendance("Noreen_Osama", registered=True, similarity=0.90)
 
         assert first is not None
         assert second is None
@@ -94,7 +95,7 @@ class TestDuplicatePrevention:
         self, service: AttendanceService
     ) -> None:
         """``already_marked`` should be True after the first call."""
-        service.mark_attendance("Catherine_Adel", known=True, similarity=0.85)
+        service.mark_attendance("Catherine_Adel", registered=True, similarity=0.85)
         assert service.already_marked("Catherine_Adel") is True
 
     def test_already_marked_false_initially(
@@ -107,8 +108,8 @@ class TestDuplicatePrevention:
         self, service: AttendanceService
     ) -> None:
         """Different known students should each get their own record."""
-        r1 = service.mark_attendance("Student_A", known=True, similarity=0.9)
-        r2 = service.mark_attendance("Student_B", known=True, similarity=0.85)
+        r1 = service.mark_attendance("Student_A", registered=True, similarity=0.9)
+        r2 = service.mark_attendance("Student_B", registered=True, similarity=0.85)
 
         assert r1 is not None
         assert r2 is not None
@@ -118,7 +119,7 @@ class TestDuplicatePrevention:
         """Simulating many frames – only the first marking should count."""
         results = []
         for _ in range(50):
-            r = service.mark_attendance("Rewan_Mosad", known=True, similarity=0.91)
+            r = service.mark_attendance("Rewan_Mosad", registered=True, similarity=0.91)
             results.append(r)
 
         marked = [r for r in results if r is not None]
@@ -135,7 +136,7 @@ class TestLogPersistence:
         self, service: AttendanceService, log_file: Path
     ) -> None:
         """``save_log`` should create the attendance JSON file."""
-        service.mark_attendance("Menna_Abdo", known=True, similarity=0.89)
+        service.mark_attendance("Menna_Abdo", registered=True, similarity=0.89)
         result_path = service.save_log()
 
         assert result_path == log_file
@@ -145,8 +146,8 @@ class TestLogPersistence:
         self, service: AttendanceService, log_file: Path
     ) -> None:
         """The JSON file should contain exactly the marked records."""
-        service.mark_attendance("Student_X", known=True, similarity=0.95)
-        service.mark_attendance("Unknown", known=False, similarity=0.12)
+        service.mark_attendance("Student_X", registered=True, similarity=0.95)
+        service.mark_attendance("Unknown", registered=False, similarity=0.12)
         service.save_log()
 
         with open(log_file, "r", encoding="utf-8") as fh:
@@ -157,21 +158,23 @@ class TestLogPersistence:
         assert data[0]["student"] == "Student_X"
         assert data[0]["attendance"] == "Present"
         assert data[1]["student"] == "Unknown"
-        assert data[1]["attendance"] == "Not Registered"
+        assert data[1]["attendance"] == "Present"
 
     def test_log_merges_with_existing(
-        self, service: AttendanceService, log_file: Path
+        self, log_file: Path
     ) -> None:
         """Saving should append to existing log entries, not overwrite."""
         # Pre‑populate the file
         existing = [{"student": "Old_Student", "attendance": "Present",
                       "timestamp": "2026-01-01T00:00:00+00:00",
-                      "known": True, "confidence": 0.99}]
+                      "registered": True}]
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with open(log_file, "w", encoding="utf-8") as fh:
             json.dump(existing, fh)
 
-        service.mark_attendance("New_Student", known=True, similarity=0.88)
+        # Create service AFTER populating file
+        service = AttendanceService(log_file=log_file)
+        service.mark_attendance("New_Student", registered=True, similarity=0.88)
         service.save_log()
 
         with open(log_file, "r", encoding="utf-8") as fh:
@@ -180,6 +183,28 @@ class TestLogPersistence:
         assert len(data) == 2
         assert data[0]["student"] == "Old_Student"
         assert data[1]["student"] == "New_Student"
+
+    def test_prevent_cross_session_duplicates(
+        self, log_file: Path
+    ) -> None:
+        """A student already in the log file should not be marked again in a new run."""
+        # Pre‑populate
+        existing = [{"student": "Mohammed_Ayman", "attendance": "Present",
+                      "timestamp": "2026-01-01T00:00:00+00:00",
+                      "registered": True}]
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_file, "w", encoding="utf-8") as fh:
+            json.dump(existing, fh)
+
+        service = AttendanceService(log_file=log_file)
+        
+        # Should be already marked
+        assert service.already_marked("Mohammed_Ayman") is True
+        
+        # Calling mark_attendance should return None
+        record = service.mark_attendance("Mohammed_Ayman", registered=True, similarity=0.95)
+        assert record is None
+        assert len(service.records) == 0
 
     def test_empty_log_creates_empty_list(
         self, service: AttendanceService, log_file: Path
@@ -200,7 +225,7 @@ class TestSessionReset:
 
     def test_reset_clears_marked(self, service: AttendanceService) -> None:
         """After reset, previously marked students should be markable again."""
-        service.mark_attendance("Student_A", known=True, similarity=0.9)
+        service.mark_attendance("Student_A", registered=True, similarity=0.9)
         assert service.already_marked("Student_A") is True
 
         service.reset_session()
@@ -210,9 +235,9 @@ class TestSessionReset:
 
     def test_reset_allows_remarking(self, service: AttendanceService) -> None:
         """After reset, the same student can be marked again."""
-        service.mark_attendance("Student_A", known=True, similarity=0.9)
+        service.mark_attendance("Student_A", registered=True, similarity=0.9)
         service.reset_session()
 
-        record = service.mark_attendance("Student_A", known=True, similarity=0.88)
+        record = service.mark_attendance("Student_A", registered=True, similarity=0.88)
         assert record is not None
         assert record["student"] == "Student_A"

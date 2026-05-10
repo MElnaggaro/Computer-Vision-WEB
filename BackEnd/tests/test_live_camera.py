@@ -160,7 +160,7 @@ class TestClassroomCamera:
         # Recognition worked
         assert len(results) == 1
         assert results[0]["name"] == "Mohammed_Ayman"
-        assert results[0]["known"] is True
+        assert results[0]["registered"] is True
         assert results[0].get("stable") is True
 
         # Attendance was marked
@@ -196,7 +196,7 @@ class TestClassroomCamera:
 
         assert len(results) == 1
         assert results[0]["name"] == "Unknown"
-        assert results[0]["known"] is False
+        assert results[0]["registered"] is False
         assert results[0].get("stable") is True
 
     @patch("app.services.vision.face_recognizer.fr_lib")
@@ -246,9 +246,9 @@ class TestClassroomCamera:
             camera.process_frame(frame)
 
         records = camera.attendance_service.records
-        known_records = [r for r in records if r["known"] is True]
-        assert len(known_records) == 1
-        assert known_records[0]["student"] == "Noreen_Osama"
+        registered_records = [r for r in records if r["registered"] is True]
+        assert len(registered_records) == 1
+        assert registered_records[0]["student"] == "Noreen_Osama"
 
     @patch("app.services.vision.face_recognizer.fr_lib")
     @patch("app.services.vision.face_detection.fr_lib")
@@ -281,9 +281,9 @@ class TestClassroomCamera:
         assert len(data) == 1
         assert data[0]["student"] == "Catherine_Adel"
         assert data[0]["attendance"] == "Present"
-        assert data[0]["known"] is True
+        assert data[0]["registered"] is True
         assert "timestamp" in data[0]
-        assert "similarity" in data[0]
+        assert "similarity" not in data[0]
 
     @patch("app.services.vision.face_recognizer.fr_lib")
     @patch("app.services.vision.face_detection.fr_lib")
@@ -325,7 +325,7 @@ class TestClassroomCamera:
         frame = _make_fake_frame(height=300, width=400)
         results = [{
             "name": "Test_Student",
-            "known": True,
+            "registered": True,
             "similarity": 0.92,
             "location": (50, 200, 200, 50),
             "stable": True,
@@ -343,7 +343,7 @@ class TestClassroomCamera:
         frame = _make_fake_frame(height=300, width=400)
         results = [{
             "name": "Unknown",
-            "known": False,
+            "registered": False,
             "similarity": 0.18,
             "location": (50, 200, 200, 50),
             "stable": True,

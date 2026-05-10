@@ -117,7 +117,7 @@ class FaceRecognizer:
         if min_dist <= self.tolerance:
             return {
                 "name": best_name,
-                "known": True,
+                "registered": True,
                 "similarity": similarity,
                 "distance": float(min_dist),
                 "location": location,
@@ -168,7 +168,7 @@ class FaceRecognizer:
         """Build a standard result dict for an unrecognised face."""
         return {
             "name": "Unknown",
-            "known": False,
+            "registered": False,
             "similarity": round(similarity, 4),
             "distance": round(distance, 4),
             "location": location,

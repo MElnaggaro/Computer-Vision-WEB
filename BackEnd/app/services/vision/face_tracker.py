@@ -198,21 +198,21 @@ class FaceTracker:
 
             if stable is not None:
                 name, similarity = stable
-                known = name != "Unknown"
+                registered = name != "Unknown"
             else:
                 # Use latest raw result
                 if track.history:
                     last_name, last_dist = track.history[-1]
                     name = last_name
                     similarity = round(max(0.0, 1.0 - last_dist), 4)
-                    known = name != "Unknown"
+                    registered = name != "Unknown"
                 else:
-                    name, similarity, known = "Unknown", 0.0, False
+                    name, similarity, registered = "Unknown", 0.0, False
 
             output.append({
                 "track_id": track.track_id,
                 "name": name,
-                "known": known,
+                "registered": registered,
                 "similarity": similarity,
                 "location": track.location,
                 "stable": stable is not None,

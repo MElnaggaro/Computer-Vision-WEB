@@ -123,7 +123,7 @@ class TestFaceRecognizer:
 
         assert len(results) == 1
         assert results[0]["name"] == "Mohammed_Ayman"
-        assert results[0]["known"] is True
+        assert results[0]["registered"] is True
         assert results[0]["similarity"] == 1.0
         assert results[0]["location"] == (50, 200, 200, 50)
 
@@ -148,7 +148,7 @@ class TestFaceRecognizer:
 
         assert len(results) == 1
         assert results[0]["name"] == "Unknown"
-        assert results[0]["known"] is False
+        assert results[0]["registered"] is False
         assert results[0]["similarity"] < 0.5
 
     @patch("app.services.vision.face_recognizer.fr_lib")
@@ -178,9 +178,9 @@ class TestFaceRecognizer:
 
         assert len(results) == 2
         assert results[0]["name"] == "Student_A"
-        assert results[0]["known"] is True
+        assert results[0]["registered"] is True
         assert results[1]["name"] == "Unknown"
-        assert results[1]["known"] is False
+        assert results[1]["registered"] is False
 
     @patch("app.services.vision.face_recognizer.fr_lib")
     def test_no_encodings_loaded(self, mock_fr: MagicMock) -> None:
@@ -198,7 +198,7 @@ class TestFaceRecognizer:
 
         assert len(results) == 1
         assert results[0]["name"] == "Unknown"
-        assert results[0]["known"] is False
+        assert results[0]["registered"] is False
 
     def test_empty_locations(self) -> None:
         """No face locations should return an empty results list."""

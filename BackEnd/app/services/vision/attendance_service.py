@@ -34,52 +34,72 @@ class AttendanceService:
         log_file: Optional[Path] = None,
     ) -> None:
         self.log_file = log_file or settings.ATTENDANCE_LOG_FILE
-        self._marked: Set[str] = set()          # student names marked this session
+        self._marked: Set[str] = set()          # student names marked so far
         self._records: List[AttendanceRecord] = []
         self._has_unsaved_changes: bool = False
+        
+        # Load students already present in the log file to prevent duplicates across runs
+        self._load_existing_students()
+
+    def _load_existing_students(self) -> None:
+        """Populate the marked set from the existing log file."""
+        if not self.log_file.exists():
+            return
+        try:
+            with open(self.log_file, "r", encoding="utf-8") as fh:
+                content = fh.read().strip()
+                if content:
+                    data = json.loads(content)
+                    if isinstance(data, list):
+                        for record in data:
+                            name = record.get("student")
+                            registered = record.get("registered", False)
+                            if name and registered and name != "Unknown":
+                                self._marked.add(name)
+            logger.info("Loaded %d previously marked students.", len(self._marked))
+        except (json.JSONDecodeError, IOError) as exc:
+            logger.warning("Could not pre-load attendance log: %s", exc)
 
     # ── Public API ───────────────────────────────────────────────────
 
     def mark_attendance(
         self,
         name: str,
-        known: bool,
+        registered: bool,
         similarity: float,
     ) -> Optional[AttendanceRecord]:
         """Record a student's attendance if not already marked.
 
         Args:
             name:       Student name or ``"Unknown"``.
-            known:      Whether the student was recognised.
+            registered: Whether the student was recognised.
             similarity: Recognition similarity (0–1).
 
         Returns:
             The ``AttendanceRecord`` dict if newly marked, or ``None``
             if attendance was already recorded for this student.
         """
-        # Skip duplicates for known students
-        if known and self.already_marked(name):
+        # Skip duplicates for registered students
+        if registered and self.already_marked(name):
             logger.debug("Attendance already marked for %s – skipping.", name)
             return None
 
         record: AttendanceRecord = {
             "student": name,
-            "attendance": "Present" if known else "Not Registered",
+            "attendance": "Present",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "known": known,
-            "similarity": round(similarity, 4),
+            "registered": registered,
         }
 
-        if known:
+        if registered:
             self._marked.add(name)
 
         self._records.append(record)
         self._has_unsaved_changes = True
         logger.info(
-            "Attendance marked: %s (%s, similarity=%.4f)",
+            "Attendance marked: %s (Present, registered=%s)",
             name,
-            record["attendance"],
-            similarity,
+            registered,
         )
         return record
 
