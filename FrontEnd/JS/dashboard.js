@@ -38,9 +38,15 @@
     const API = (APP.API_BASE_URL || window.SMART_CLASSROOM_API || FALLBACK_API).replace(/\/+$/, '');
     const API_V1 = `${API}/api/v1`;
 
-    const RECOGNIZE_INTERVAL_MS = APP.RECOGNIZE_INTERVAL_MS || 800;
-    const HEALTH_INTERVAL_MS    = APP.HEALTH_INTERVAL_MS    || 5000;
-    const EVENT_POLL_MS         = APP.EVENT_POLL_MS         || 2000;
+    // ── Cadence (self-paced; each value is a floor) ───────────────
+    // The recognize loop schedules its next call AFTER the current
+    // response returns — we never queue requests on a fixed interval.
+    // Health: slow heartbeat when backend is reachable, fast retry
+    // only when offline (so the UI recovers quickly on reconnect).
+    const RECOGNIZE_INTERVAL_MS       = APP.RECOGNIZE_INTERVAL_MS       || 200;
+    const HEALTH_INTERVAL_MS          = APP.HEALTH_INTERVAL_MS          || 30000;
+    const HEALTH_OFFLINE_INTERVAL_MS  = APP.HEALTH_OFFLINE_INTERVAL_MS  || 2000;
+    const EVENT_POLL_MS               = APP.EVENT_POLL_MS               || 1500;
     const FRAME_SEND_QUALITY    = 0.65;
     const FRAME_SEND_WIDTH      = 480;
     const ADMIN_PASSWORD        = 'aiu';   // frontend gate; backend re-validates
@@ -228,10 +234,20 @@
             store.backendOnline = false;
         }
     }
+    // Self-pacing health loop.  Re-schedules with setTimeout so the
+    // wait is always SLOW (30 s) when the backend is online and FAST
+    // (2 s) only while we're trying to reconnect — never a steady
+    // 5 s ping flood like the old setInterval pattern.
     function startHealthLoop() {
-        clearInterval(store.healthTimer);
-        checkHealth();
-        store.healthTimer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
+        clearTimeout(store.healthTimer);
+        const tick = async () => {
+            await checkHealth();
+            const next = store.backendOnline
+                ? HEALTH_INTERVAL_MS
+                : HEALTH_OFFLINE_INTERVAL_MS;
+            store.healthTimer = setTimeout(tick, next);
+        };
+        tick();
     }
 
     // First connect: auto-populate the dashboard with the existing log history.
@@ -356,8 +372,21 @@
         return uploadCanvas.toDataURL('image/jpeg', FRAME_SEND_QUALITY);
     }
 
+    // Self-pacing recognition loop.
+    //
+    // The backend now answers /vision/recognize-frame in ~25-50 ms
+    // (lock-cache hit) or ~150-300 ms (cold encode).  A fixed-interval
+    // setInterval would either under-utilise the backend on the fast
+    // path or pile up overlapping requests on the slow one.
+    //
+    // Solution: schedule the NEXT call only AFTER the current one
+    // returns, with a small floor (RECOGNIZE_INTERVAL_MS) so we never
+    // hammer the backend back-to-back when responses are sub-1 ms.
+    // This naturally adapts:
+    //   • Fast backend → ~5 fps recognize cadence.
+    //   • Slow backend → 1-2 fps, no queue, no UI lag.
     let recognizeBusy = false;
-    async function recognizeFrame() {
+    async function recognizeFrameOnce() {
         if (!store.cameraActive || recognizeBusy) return;
         const dataUrl = captureFrameDataURL();
         if (!dataUrl) return;
@@ -375,11 +404,24 @@
         }
     }
     function startRecognitionLoop() {
-        clearInterval(store.recognizeTimer);
-        store.recognizeTimer = setInterval(recognizeFrame, RECOGNIZE_INTERVAL_MS);
+        clearTimeout(store.recognizeTimer);
+        const tick = async () => {
+            if (!store.cameraActive) {
+                store.recognizeTimer = null;
+                return;
+            }
+            await recognizeFrameOnce();
+            // Re-schedule with a floor; a long backend response means
+            // the tick itself was already long, and we still wait the
+            // same floor before queuing the next one.
+            if (store.cameraActive) {
+                store.recognizeTimer = setTimeout(tick, RECOGNIZE_INTERVAL_MS);
+            }
+        };
+        tick();
     }
     function stopRecognitionLoop() {
-        clearInterval(store.recognizeTimer);
+        clearTimeout(store.recognizeTimer);
         store.recognizeTimer = null;
     }
 
@@ -398,7 +440,9 @@
         const name = r.registered ? r.name : 'Unknown';
         const emotion = r.emotion || 'Neutral';
         const attendance = r.registered ? 'Present' : 'Unregistered';
-        showIdentity(name, attendance, emotion, r.registered);
+        const emotionStable = !!r.emotion_stable;
+        const emotionSamples = r.emotion_samples || 0;
+        showIdentity(name, attendance, emotion, r.registered, emotionStable, emotionSamples);
 
         if (r.registered) {
             store.guestMode = false;
@@ -406,33 +450,46 @@
         } else if (!store.guestMode) {
             store.currentStudent = { name: 'Unknown', attendance: 'Unregistered', emotion, registered: false };
         }
+
+        // Immediately fetch new events when attendance was JUST marked
+        // (fires exactly once per student, not on every subsequent frame).
+        if (results.some(res => res.newly_marked)) {
+            pollEventsOnce();
+        }
     }
 
     // ══════════════════════════════════════
     // IDENTITY CARD
     // ══════════════════════════════════════
-    function showIdentity(name, attendance, emotion, registered) {
+    function showIdentity(name, attendance, emotion, registered, emotionStable, emotionSamples) {
         if (!dom.identityCard) return;
+        // Determine what to show for emotion:
+        //   - If emotion averaging is NOT done yet → show "Detecting emotion..."
+        //   - If emotion averaging IS done → show the final averaged label
+        const emotionDisplay = (emotionStable)
+            ? emotionStr(emotion)
+            : `⏳ Detecting emotion... (${emotionSamples || 0}/5)`;
+
         if (registered) {
             dom.idAvatar.textContent = getInitials(name);
             dom.idName.textContent = name.replace(/_/g, ' ');
             dom.idAttendance.textContent = attendance || 'Present';
             dom.idAttendance.classList.toggle('absent', attendance === 'Absent');
-            dom.idEmotion.textContent = emotionStr(emotion);
+            dom.idEmotion.textContent = emotionDisplay;
             if (dom.actionBtns) dom.actionBtns.style.display = 'none';
         } else if (store.guestMode) {
             dom.idAvatar.textContent = '?';
             dom.idName.textContent = 'Guest Visitor';
             dom.idAttendance.textContent = 'Guest';
             dom.idAttendance.classList.add('absent');
-            dom.idEmotion.textContent = emotionStr(emotion);
+            dom.idEmotion.textContent = emotionDisplay;
             if (dom.actionBtns) dom.actionBtns.style.display = 'none';
         } else {
             dom.idAvatar.textContent = '?';
             dom.idName.textContent = 'Unknown Visitor';
             dom.idAttendance.textContent = 'Unregistered';
             dom.idAttendance.classList.add('absent');
-            dom.idEmotion.textContent = emotionStr(emotion);
+            dom.idEmotion.textContent = emotionDisplay;
             if (dom.actionBtns) dom.actionBtns.style.display = 'flex';
         }
         dom.identityCard.classList.add('visible');
@@ -461,6 +518,8 @@
     let recognition = null;
     let prepareTimers = [];
 
+    let _recognitionGotResult = false;
+
     if (SR) {
         recognition = new SR();
         recognition.continuous = false;
@@ -468,11 +527,13 @@
         recognition.interimResults = false;
 
         recognition.onstart = () => {
-            // Note: state was already set to 'listening' by handleStartListening()
+            // Note: state was already set to 'listening' by startPushToTalk()
+            _recognitionGotResult = false;
             setMicState('listening');
         };
 
         recognition.onresult = async ev => {
+            _recognitionGotResult = true;
             const transcript = ev.results[0][0].transcript;
             setMicState('processing');
             try {
@@ -495,19 +556,39 @@
 
         recognition.onerror = ev => {
             console.error('Speech error:', ev.error);
-            if (ev.error !== 'aborted') {
-                toast({ kind: 'error', title: 'Microphone error', message: ev.error || 'unknown' });
+            // Translate browser SpeechRecognition error codes into messages
+            // a user can act on.  Never surface raw codes like "network".
+            const SR_ERROR_MAP = {
+                'no-speech':       { title: 'No speech detected',          msg: 'Click the mic and try again.' },
+                'audio-capture':   { title: 'Microphone unavailable',      msg: 'No working microphone was found.' },
+                'not-allowed':     { title: 'Microphone permission denied', msg: 'Allow microphone access in your browser settings.' },
+                'service-not-allowed': { title: 'Speech service blocked',  msg: 'Browser blocked the speech service.' },
+                'network':         { title: 'Speech service unavailable',  msg: 'Could not reach the online speech recognizer.' },
+                'language-not-supported': { title: 'Language unsupported', msg: 'en-US is not available on this device.' },
+                'bad-grammar':     { title: 'Could not understand speech', msg: 'Please rephrase your question.' },
+            };
+            if (ev.error && ev.error !== 'aborted') {
+                const mapped = SR_ERROR_MAP[ev.error] || { title: 'Microphone error', msg: 'Please try again.' };
+                toast({ kind: 'error', title: mapped.title, message: mapped.msg });
             }
+            hideMicCountdown();
+            clearPrepareTimers();
             dom.micLabel.textContent = 'Ask a Question';
             setMicState('idle');
         };
 
         recognition.onend = () => {
-            // If we ended without producing a result (timeout, manual stop), reset.
-            if (store.micState === 'listening') {
+            // If we ended without producing a result (timeout, or manual stop
+            // with no audio captured), reset back to idle.  This also catches
+            // the case where stopPushToTalk() bumped us to 'processing' but
+            // onresult never fired — without this, the mic would hang forever.
+            const stuck = store.micState === 'listening' ||
+                          (store.micState === 'processing' && !_recognitionGotResult);
+            if (stuck) {
                 setMicState('idle');
                 dom.micLabel.textContent = 'Ask a Question';
             }
+            _recognitionGotResult = false;
         };
     }
 
@@ -782,21 +863,33 @@
     // ══════════════════════════════════════
     // EVENTS POLL — only NEW events; first connect skips history
     // ══════════════════════════════════════
+    let pollBusy = false;
     async function pollEventsOnce() {
-        if (!store.backendOnline || store.firstEventConnect) return;
+        if (pollBusy || !store.backendOnline || store.firstEventConnect) return;
+        pollBusy = true;
         try {
-            const data = await api('GET', `${API}/logs/events?since=${store.eventCursor}`);
+            const cursorNow = store.eventCursor;
+            const data = await api('GET', `${API}/logs/events?since=${cursorNow}`);
             const events = data.events || [];
-            if (events.length) {
+            if (events.length && store.eventCursor === cursorNow) {
                 events.forEach(processBackendEvent);
-                store.eventCursor += events.length;
+                store.eventCursor = cursorNow + events.length;
             }
         } catch (_) { /* silent */ }
+        finally { pollBusy = false; }
     }
+    // Self-pacing event loop.  Same pattern as the recognize loop:
+    // schedule the next poll AFTER the current one returns, never
+    // overlap.  recognize-frame triggers an immediate one-shot poll
+    // on `newly_marked`, so this is just the idle refresh tick — the
+    // dashboard already updates instantly when attendance is marked.
     function startEventLoop() {
-        clearInterval(store.eventTimer);
-        pollEventsOnce();
-        store.eventTimer = setInterval(pollEventsOnce, EVENT_POLL_MS);
+        clearTimeout(store.eventTimer);
+        const tick = async () => {
+            await pollEventsOnce();
+            store.eventTimer = setTimeout(tick, EVENT_POLL_MS);
+        };
+        tick();
     }
 
     function processBackendEvent(evt) {
@@ -1094,7 +1187,7 @@
     // Public hooks (kept for compatibility with prior callers)
     // ══════════════════════════════════════
     window.dashShowIdentity = function (name, attendance, emotion) {
-        showIdentity(name, attendance, emotion, !!name && name !== 'Unknown');
+        showIdentity(name, attendance, emotion, !!name && name !== 'Unknown', true, 5);
         if (name && name !== 'Unknown') upsertStudent(name, attendance, emotion);
     };
     window.dashAddLog = renderLogCard.bind(null);

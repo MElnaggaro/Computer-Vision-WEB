@@ -364,26 +364,113 @@ class TestClassroomCamera:
 
 
 # ── Manual test entry point ─────────────────────────────────────────
+#
+# The manual test now launches the *fast* (pure vision performance) runner
+# defined in ``app.services.vision.fast_camera``.  Emotion / NLP / speech
+# / web API are intentionally not loaded here — this is the
+# ``<100 ms recognition`` performance-mode entry point.
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("  MANUAL LIVE CAMERA TEST")
-    print("=" * 60)
-    print()
-    print("This will open your webcam and run face recognition.")
-    print("Make sure encodings are built first:")
-    print("  python -m app.services.vision.webcam_runner --rebuild")
-    print()
-    print("Controls:")
-    print("  Q — Quit")
-    print("  R — Reset session")
-    print("  B — Rebuild encodings")
-    print()
-    print("Starting in 3 seconds …")
-
+    import argparse
     import time
-    time.sleep(3)
 
-    from app.services.vision.webcam_runner import ClassroomCamera as _Camera
-    cam = _Camera()
-    cam.run()
+    parser = argparse.ArgumentParser(
+        description="Live camera test — pure vision performance mode."
+    )
+    parser.add_argument("--camera", type=int, default=0)
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=0.5,
+        help="Downscale factor for detection/encoding (0.25 = fastest).",
+    )
+    parser.add_argument(
+        "--recog-every",
+        type=int,
+        default=10,
+        help="Re-recognize every N frames; tracking fills the gap.",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force-rebuild encodings before starting.",
+    )
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument(
+        "--test-camera",
+        action="store_true",
+        help="Run in camera-only diagnostic mode.",
+    )
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("  FAST CAMERA — PURE VISION PERFORMANCE MODE")
+    print("=" * 60)
+    print()
+    print("  Disabled: emotion · speech · NLP · web API · attendance polling")
+    print("  Enabled : KCF tracking · vectorized matching · per-track identity cache")
+    print()
+    print("  Controls inside the OpenCV window:")
+    print("    Q / Esc — Quit")
+    print("    R       — Reset all tracks (fresh recognition next frame)")
+    print("    B       — Rebuild encoding cache from data/students_faces/")
+    print()
+    print(f"  scale={args.scale}  recog-every={args.recog_every}  "
+          f"resolution={args.width}x{args.height}")
+    print()
+    print("  Starting in 2 seconds …")
+    time.sleep(2)
+
+    from app.services.vision.fast_camera import FastClassroomCamera
+
+    runner = FastClassroomCamera(
+        camera_index=args.camera,
+        scale=args.scale,
+        recog_every=args.recog_every,
+        cam_width=args.width,
+        cam_height=args.height,
+    )
+
+    if args.test_camera:
+        print("\n=== STARTING CAMERA DIAGNOSTIC MODE ===")
+        cap = runner._open_capture()
+        if cap is None:
+            print("Failed to open camera in diagnostic mode.")
+            sys.exit(1)
+            
+        print("Camera opened successfully. Showing raw frames. Press Q to exit.")
+        try:
+            fps = 0.0
+            last_t = time.time()
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Warning: ret=False")
+                    continue
+                if frame is None or frame.size == 0:
+                    print("Warning: Invalid frame")
+                    continue
+                
+                t_now = time.time()
+                dt = t_now - last_t
+                last_t = t_now
+                if dt > 0:
+                    if fps == 0.0:
+                        fps = 1.0 / dt
+                    else:
+                        fps = fps * 0.9 + (1.0 / dt) * 0.1
+                
+                cv2.putText(frame, f"RAW FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.imshow("Camera Diagnostic Mode", frame)
+                if cv2.waitKey(1) & 0xFF in (ord("q"), ord("Q"), 27):
+                    break
+        finally:
+            cap.release()
+            cv2.destroyAllWindows()
+        sys.exit(0)
+
+    if args.rebuild:
+        print("Rebuilding encodings from data/students_faces/ …")
+        runner.rebuild_encodings()
+    runner.run()

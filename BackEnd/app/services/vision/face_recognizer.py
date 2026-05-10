@@ -103,11 +103,12 @@ class FaceRecognizer:
         known_names = self.encoding_manager.names
 
         if not known_encodings:
+            logger.warning("No known encodings — returning Unknown.")
             return self._unknown_result(location, distance=1.0, similarity=0.0)
 
         distances: np.ndarray = fr_lib.face_distance(known_encodings, encoding)
 
-        # Find minimum distance
+        # Find minimum distance across ALL encodings
         min_idx = np.argmin(distances)
         min_dist = float(distances[min_idx])
         best_name = known_names[min_idx]
@@ -115,15 +116,22 @@ class FaceRecognizer:
         similarity: float = self._distance_to_similarity(min_dist)
         accepted = min_dist <= self.tolerance
 
+        # ── Debug output (Bug 6) ─────────────────────────────────────
         print("\n" + "-" * 30)
         print("Detected face")
+        print(f"Known encodings loaded: {len(known_encodings)}")
         print(f"Best match: {best_name}")
-        print(f"Distance: {min_dist:.2f}")
+        print(f"Distance: {min_dist:.4f}")
         print(f"Threshold: {self.tolerance:.2f}")
         print(f"Accepted: {'YES' if accepted else 'NO'}")
         if not accepted:
             print("Result: Unknown")
-        print("-" * 30 + "\n")
+        print("-" * 30)
+
+        logger.info(
+            "Face match: best=%s dist=%.4f threshold=%.2f accepted=%s (encodings=%d)",
+            best_name, min_dist, self.tolerance, accepted, len(known_encodings),
+        )
 
         if accepted:
             return {

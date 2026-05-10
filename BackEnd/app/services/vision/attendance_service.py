@@ -305,8 +305,14 @@ class AttendanceService:
         return set(self._marked)
 
     def reset_session(self) -> None:
-        """Clear in-memory state for a fresh attendance session."""
+        """Clear in-memory state AND wipe the log file for a fresh session.
+
+        Called on server startup and via the ``reset-attendance`` API.
+        """
         self._marked.clear()
         self._events.clear()
         self._student_state.clear()
-        logger.info("Attendance session reset.")
+        # Wipe the log file so the frontend's seedEventCursor
+        # doesn't replay stale events from a prior run.
+        self._log_service._write_events([])
+        logger.info("Attendance session reset — log file cleared.")

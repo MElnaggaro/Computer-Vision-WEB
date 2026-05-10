@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "event": "attendance",
+    "student": "Mohammed_Ayman",
+    "attendance": "Present",
+    "registered": true,
+    "timestamp": "2026-05-10T15:15:56.716170+00:00"
+  }
+]

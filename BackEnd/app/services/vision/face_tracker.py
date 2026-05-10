@@ -30,7 +30,15 @@ FaceLocation = Tuple[int, int, int, int]
 
 @dataclass
 class TrackedFace:
-    """A single tracked face with recognition history."""
+    """A single tracked face with recognition history.
+
+    Once an identity has stabilized for ``ATTENDANCE_STABLE_FRAMES``
+    consecutive votes, the track *locks* that identity into
+    :attr:`locked_name` / :attr:`locked_similarity`.  Locked tracks
+    drive the per-track identity cache that lets ``VisionSession``
+    skip ``face_encodings()`` for already-recognised faces — the
+    single biggest cost in the recognition pipeline.
+    """
 
     track_id: int
     location: FaceLocation
@@ -39,10 +47,17 @@ class TrackedFace:
     stable_count: int = 0          # consecutive frames with same stable name
     _last_stable_name: Optional[str] = field(default=None, repr=False)
 
+    # ── Identity lock (fed to the cache that skips face_encodings) ──
+    locked_name: Optional[str] = None
+    locked_similarity: float = 0.0
+    locked_distance: float = 1.0
+    frames_since_recog: int = 0    # how long we've been coasting on the lock
+
     def push(self, name: str, distance: float) -> None:
         """Record one frame's recognition result."""
         self.history.append((name, distance))
         self.frames_missed = 0
+        self.frames_since_recog = 0
 
         # Track consecutive stability
         stable = self.stable_identity
@@ -55,13 +70,32 @@ class TrackedFace:
             self._last_stable_name = None
             self.stable_count = 0
 
+        # Lock identity once the track is stable.  Re-locking with a
+        # stronger similarity is allowed; downgrades are not, so a
+        # transient blur frame can't poison a confirmed match.
+        if stable is not None and stable[0] != "Unknown":
+            stable_name, stable_sim = stable
+            if (
+                self.locked_name is None
+                or self.locked_name == stable_name
+                or stable_sim > self.locked_similarity
+            ):
+                self.locked_name = stable_name
+                self.locked_similarity = float(stable_sim)
+                self.locked_distance = float(distance)
+
+    def coast(self) -> None:
+        """Carry an existing track forward without a new recognition."""
+        self.frames_missed = 0
+        self.frames_since_recog += 1
+
     @property
     def stable_identity(self) -> Optional[Tuple[str, float]]:
         """Return (name, avg_similarity) if majority vote passes threshold.
 
         Returns ``None`` if no name dominates the history.
         """
-        if len(self.history) < min(3, settings.TRACK_STABILITY_THRESHOLD):
+        if len(self.history) < settings.TRACK_STABILITY_THRESHOLD:
             return None
 
         names = [name for name, _ in self.history]
@@ -230,3 +264,38 @@ class FaceTracker:
     @property
     def tracks(self) -> Dict[int, TrackedFace]:
         return dict(self._tracks)
+
+    # ── Identity-cache helpers ───────────────────────────────────────
+
+    def find_track_for_location(
+        self,
+        location: FaceLocation,
+        min_iou: Optional[float] = None,
+    ) -> Optional[TrackedFace]:
+        """Return the existing track whose box has the highest IoU
+        with ``location``, or ``None`` if no track passes the threshold.
+
+        Used to decide *before* running ``face_encodings`` whether a
+        detection can be served from the locked identity of an
+        existing track.
+        """
+        threshold = min_iou if min_iou is not None else self.iou_threshold
+        best: Optional[TrackedFace] = None
+        best_iou = threshold
+        for track in self._tracks.values():
+            iou = _iou(location, track.location)
+            if iou >= best_iou:
+                best_iou = iou
+                best = track
+        return best
+
+    def coast_unmatched(self, matched_ids: set) -> None:
+        """Increment ``frames_since_recog`` for tracks not seen this frame.
+
+        Called by ``VisionSession`` after the recognition pass so a
+        track that's still on screen but didn't get re-encoded this
+        cycle still ages its lock counter.
+        """
+        for tid, track in self._tracks.items():
+            if tid not in matched_ids:
+                track.frames_since_recog += 1

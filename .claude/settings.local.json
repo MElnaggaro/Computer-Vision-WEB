@@ -12,7 +12,12 @@
       "Bash(python -m pytest tests/test_nlp.py --tb=line)",
       "Bash(python -m pytest tests/test_nlp.py --tb=line -q)",
       "Bash(python -u BackEnd/run.py --no-browser --backend-port 8765 --frontend-port 5765 --health-timeout 30)",
-      "Bash(python -m pytest tests/test_vision.py tests/test_speech.py tests/test_registration.py tests/test_api_routes.py tests/test_full_integration.py -q)"
+      "Bash(python -m pytest tests/test_vision.py tests/test_speech.py tests/test_registration.py tests/test_api_routes.py tests/test_full_integration.py -q)",
+      "Bash(python -m pytest tests/test_full_pipeline.py tests/test_api_routes.py tests/test_full_integration.py -q --tb=short)",
+      "Bash(findstr /R /C:\"PASS\" /C:\"FAIL\" /C:\"ERROR\" /C:\"passed\" /C:\"failed\" /C:\"error\")",
+      "Bash(powershell *)",
+      "Bash(python -c \"import cv2; print\\('cv2:', cv2.__version__\\); print\\('TrackerKCF_create:', hasattr\\(cv2, 'TrackerKCF_create'\\)\\); print\\('legacy:', hasattr\\(cv2, 'legacy'\\)\\)\")",
+      "Bash(python -c \"import pickle, numpy as np; d = pickle.load\\(open\\('data/encodings/face_encodings.pkl','rb'\\)\\); print\\('names:', len\\(d['names']\\), '| unique:', len\\(set\\(d['names']\\)\\)\\); print\\('encodings:', len\\(d['encodings']\\), 'each shape:', np.asarray\\(d['encodings'][0]\\).shape\\)\")"
     ]
   }
 }

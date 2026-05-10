@@ -67,28 +67,40 @@ class VisionSession:
                         (useful for unit tests).
     """
 
-    def __init__(self, enable_emotion: bool = True) -> None:
+    # Identity-lock cache lifetime: how many frames a locked track may
+    # coast on its cached identity before we force a fresh
+    # ``face_encodings`` recompute.  Faces detected within this window
+    # are served from the lock for ~free.
+    IDENTITY_LOCK_TTL_FRAMES: int = 30
+
+    # Minimum IoU required to reuse a locked identity for a detection.
+    IDENTITY_LOCK_IOU: float = 0.35
+
+    def __init__(self, enable_emotion: bool = False) -> None:
+        # ── 1. Static configuration ──────────────────────────────────
         self.enable_emotion = enable_emotion
+
+        # ── 2. Services ──────────────────────────────────────────────
         self.encoding_manager = EncodingManager()
         self.face_detector = FaceDetector()
         self.face_recognizer = FaceRecognizer(encoding_manager=self.encoding_manager)
         self.face_tracker = FaceTracker()
         self.attendance_service = AttendanceService()
 
+        # ── 3. Optional emotion tracker (off by default — performance) ─
         self.emotion_tracker: Optional[EmotionTracker] = None
         if enable_emotion:
-            # Run the emotion detector on every recognise-frame call.
-            # The frontend already throttles uploads to ~800 ms, so this
-            # naturally gives ~one emotion sample per request without
-            # spending CPU on extra detector runs.  Raw flicker is then
-            # smoothed via the buffer's majority vote.
+            # Emotion runs every N frames (config: EMOTION_DETECTION_INTERVAL)
+            # and ONLY for faces already marked for attendance — see
+            # recognize_frame() for the performance-gating logic.
             self.emotion_tracker = EmotionTracker(
-                emotion_interval=1,
+                emotion_interval=settings.EMOTION_DETECTION_INTERVAL,
                 buffer_size=settings.EMOTION_BUFFER_SIZE,
                 max_stale_frames=settings.EMOTION_MAX_STALE_FRAMES,
                 min_stable_samples=settings.EMOTION_MIN_STABLE_SAMPLES,
             )
 
+        # ── 4. Streaming / capture state ─────────────────────────────
         self.frame_count: int = 0
         self._capture: Optional[cv2.VideoCapture] = None
         self._capture_lock = threading.Lock()
@@ -96,31 +108,82 @@ class VisionSession:
         self._stream_thread: Optional[threading.Thread] = None
         self._stream_running: bool = False
 
-        # Force rebuild on construction to avoid stale cache.
+        # ── 5. Fresh session: clear stale log from previous runs ─────
+        # Each server start = clean session.  Prevents stale attendance
+        # events from being replayed as duplicates on the frontend.
+        self.attendance_service.reset_session()
+        logger.info("Session cleared — fresh attendance log.")
+
+        # ── 6. Encoding cache: load via fingerprint check ────────────
+        # ``ensure_fresh`` reloads the .pkl if the dataset is unchanged
+        # (milliseconds) and rebuilds it only when an image was added,
+        # removed, or modified.  Replaces the old unconditional rebuild
+        # which made every backend startup take 30-60 s.
         try:
-            self.rebuild_encodings()
+            summary = self.encoding_manager.ensure_fresh()
+            logger.info(
+                "Encoding ready: status=%s students=%d total=%d",
+                summary.get("status"),
+                len(summary.get("students", {})),
+                summary.get("total_encodings", 0),
+            )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not build encodings: %s", exc)
+            logger.warning("Could not prepare encodings: %s", exc)
 
     # ── Encodings ────────────────────────────────────────────────────
 
     def ensure_encodings(self) -> bool:
-        """Make sure encodings are in memory; build them if needed."""
+        """Make sure encodings are in memory.
+
+        Hot path: this runs on every ``recognize_frame`` call, so it
+        must be a near-zero-cost no-op once encodings are loaded.  We
+        only call ``ensure_fresh`` (fingerprint check + maybe rebuild)
+        when the in-memory cache is empty — i.e. on the first frame
+        after server start, or after an explicit reset.
+        """
         if self.encoding_manager.is_loaded:
             return True
         try:
-            self.rebuild_encodings()
+            self.encoding_manager.ensure_fresh()
         except FileNotFoundError as exc:
             logger.error("Encoding build failed: %s", exc)
             return False
         return self.encoding_manager.is_loaded
 
     def rebuild_encodings(self) -> Dict[str, Any]:
-        """Force a full rebuild of the face-encoding cache."""
+        """Force a full rebuild of the face-encoding cache.
+
+        Defensive sequence:
+            1. Clear any in-memory encodings.
+            2. Rebuild from the filesystem (``data/students_faces/``) only.
+               ``build_encodings`` writes the new ``.pkl`` ATOMICALLY
+               (tmp file + ``os.replace``), so the cache is *never*
+               missing — even if the Python process is killed
+               mid-rebuild.  A new fingerprint enforces correctness, so
+               there is no need to ``unlink`` the previous cache: the
+               filesystem-as-source-of-truth invariant comes from
+               ``build_encodings`` scanning ``students_faces`` directly,
+               not from preemptive deletion.
+            3. Reset the per-track history so newly added students don't
+               inherit any prior stability counters.
+        """
+        # 1 — wipe in-memory state.  We deliberately do NOT delete the
+        # on-disk cache here.  Doing so was the root cause of the
+        # "cache disappears between runs" bug: any registration approval
+        # or aborted rebuild left the .pkl missing, forcing a 30-85 s
+        # rebuild on the next startup.
+        try:
+            self.encoding_manager._names.clear()  # type: ignore[attr-defined]
+            self.encoding_manager._encodings.clear()  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
+
+        # 2 — rebuild from the live filesystem (atomic write inside).
         summary = self.encoding_manager.build_encodings()
         # Reload in-memory cache so subsequent recognitions see new students
         self.encoding_manager.load_encodings()
-        # Reset trackers so newly added faces get fresh stability counters
+
+        # 4 — reset trackers so newly added faces get fresh stability counters
         self.face_tracker.reset()
         if self.emotion_tracker is not None:
             self.emotion_tracker.reset()
@@ -135,6 +198,12 @@ class VisionSession:
     ) -> List[Dict[str, Any]]:
         """Run the full pipeline on one BGR frame and return per-face results.
 
+        Performance priorities (in order):
+            1. Face detection + recognition — always runs
+            2. Tracking + attendance logging — fires as soon as identity is stable
+            3. Emotion — runs ONLY for faces already marked for attendance
+               (skipped in the critical first-recognition path to save ~200-500 ms)
+
         Each result dict contains::
 
             {
@@ -148,6 +217,9 @@ class VisionSession:
                 "attendance_ready": bool,
                 "emotion": str,
                 "emotion_confidence": float,
+                "emotion_stable": bool,
+                "emotion_samples": int,
+                "newly_marked": bool,
             }
         """
         if frame is None or frame.size == 0:
@@ -155,37 +227,115 @@ class VisionSession:
 
         self.ensure_encodings()
         self.frame_count += 1
+        t0 = time.perf_counter()
 
-        # Detect → recognise on a downscaled RGB copy (faster).
+        # ── Stage 1: Detect on downscaled RGB ────────────────────────
         small = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
         rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-        locations = self.face_detector.detect_faces(rgb_small, is_rgb=True)
-        raw_results = (
-            self.face_recognizer.recognize_faces(rgb_small, locations, is_rgb=True)
-            if locations
-            else []
-        )
 
-        # Scale boxes back up to original frame coords.
+        t1 = time.perf_counter()
+        small_locations = self.face_detector.detect_faces(rgb_small, is_rgb=True)
+        t2 = time.perf_counter()
+
+        # Pre-compute the upscaled boxes so we can match detections to
+        # existing tracks BEFORE deciding whether to encode.
         fh, fw = frame.shape[:2]
-        for res in raw_results:
-            t, r, b, l = res["location"]
-            res["location"] = (
-                max(0, min(t * 2, fh - 1)),
-                max(0, min(r * 2, fw - 1)),
-                max(0, min(b * 2, fh - 1)),
-                max(0, min(l * 2, fw - 1)),
+        full_locations: List[Tuple[int, int, int, int]] = []
+        for top, right, bottom, left in small_locations:
+            full_locations.append(
+                (
+                    max(0, min(int(top * 2), fh - 1)),
+                    max(0, min(int(right * 2), fw - 1)),
+                    max(0, min(int(bottom * 2), fh - 1)),
+                    max(0, min(int(left * 2), fw - 1)),
+                )
             )
 
-        stable_results = self.face_tracker.update(raw_results)
+        # ── Stage 2: Identity-lock fast path ─────────────────────────
+        # Per-detection decision: if the box overlaps an existing
+        # track that has a *locked* identity within its TTL, reuse the
+        # locked name without paying for ``face_encodings``.  This is
+        # the single biggest performance lever for repeat frames.
+        raw_results: List[Dict[str, Any]] = [None] * len(full_locations)  # type: ignore[list-item]
+        encode_indices: List[int] = []
+        used_tracks: set = set()
 
-        # Emotion per stable result, including a "stable" flag that
-        # determines whether attendance can be safely committed.
+        for i, full_loc in enumerate(full_locations):
+            track = self.face_tracker.find_track_for_location(
+                full_loc, min_iou=self.IDENTITY_LOCK_IOU
+            )
+            if (
+                track is not None
+                and track.locked_name is not None
+                and track.frames_since_recog < self.IDENTITY_LOCK_TTL_FRAMES
+                and track.track_id not in used_tracks
+            ):
+                used_tracks.add(track.track_id)
+                raw_results[i] = {
+                    "name": track.locked_name,
+                    "registered": track.locked_name != "Unknown",
+                    "similarity": track.locked_similarity,
+                    "distance": track.locked_distance,
+                    "location": full_loc,
+                    "from_cache": True,
+                }
+            else:
+                encode_indices.append(i)
+
+        # ── Stage 3: encode + match ONLY the un-cached subset ────────
+        if encode_indices:
+            sub_small = [small_locations[i] for i in encode_indices]
+            sub_results = self.face_recognizer.recognize_faces(
+                rgb_small, sub_small, is_rgb=True
+            )
+            for j, idx in enumerate(encode_indices):
+                if j >= len(sub_results):
+                    continue
+                res = sub_results[j]
+                res["location"] = full_locations[idx]
+                res["from_cache"] = False
+                raw_results[idx] = res
+
+        # Drop any holes from sub-result indexing edge cases.
+        raw_results = [r for r in raw_results if r is not None]
+        t3 = time.perf_counter()
+
+        # ── Stage 4: Track identities ────────────────────────────────
+        stable_results = self.face_tracker.update(raw_results)
+        t4 = time.perf_counter()
+
+        # ── Stage 3: Attendance — fires IMMEDIATELY, no emotion gate ─
+        # Attendance is logged as soon as identity is stable + confirmed.
+        # Emotion is NOT required — it updates asynchronously later.
+        any_newly_marked = False
+        if mark_attendance:
+            for res in stable_results:
+                if res.get("attendance_ready") and res.get("registered"):
+                    record = self.attendance_service.mark_attendance(
+                        name=res["name"],
+                        registered=True,
+                        similarity=res.get("similarity", 0.0),
+                        emotion=None,  # emotion not yet available
+                        emotion_confidence=None,
+                    )
+                    if record is not None:
+                        res["newly_marked"] = True
+                        any_newly_marked = True
+        t5 = time.perf_counter()
+
+        # ── Stage 4: Emotion — ONLY for already-marked faces ─────────
+        # This is the key perf optimisation: FER inference (~200-500 ms)
+        # is skipped entirely during the critical first-recognition path.
+        # Once attendance is logged, emotion sampling begins and the
+        # frontend shows the averaged result after ~5 samples.
         for result in stable_results:
             label, confidence = "Neutral", 0.0
-            emotion_stable = self.emotion_tracker is None  # True if disabled
+            emotion_stable = self.emotion_tracker is None
             emotion_samples = 0
-            if self.emotion_tracker is not None:
+            name = result.get("name", "Unknown")
+            already_marked = self.attendance_service.already_marked(name)
+
+            if already_marked and self.emotion_tracker is not None:
                 tid = result.get("track_id", -1)
                 loc = result.get("location")
                 if loc is not None and tid >= 0:
@@ -203,29 +353,45 @@ class VisionSession:
                         confidence = float(emotion.get("confidence", 0.0))
                         emotion_stable = self.emotion_tracker.is_stable(tid)
                         emotion_samples = self.emotion_tracker.sample_count(tid)
+
             result["emotion"] = label
             result["emotion_confidence"] = round(confidence, 4)
             result["emotion_stable"] = bool(emotion_stable)
             result["emotion_samples"] = int(emotion_samples)
+            result.setdefault("newly_marked", False)
 
-        # Attendance for stable + recognised + ready faces — but ONLY
-        # once emotion has also stabilised.  This delivers the project
-        # requirement that attendance must not commit before an averaged
-        # emotion is available (~5s of samples).
-        if mark_attendance:
-            for res in stable_results:
-                if (
-                    res.get("attendance_ready")
-                    and res.get("registered")
-                    and res.get("emotion_stable")
-                ):
-                    self.attendance_service.mark_attendance(
-                        name=res["name"],
-                        registered=True,
-                        similarity=res.get("similarity", 0.0),
-                        emotion=res.get("emotion"),
-                        emotion_confidence=res.get("emotion_confidence"),
-                    )
+            # Debug logging for emotion buffer (only for marked faces)
+            if already_marked and self.emotion_tracker is not None:
+                tid = result.get("track_id", -1)
+                buf = self.emotion_tracker._buffers.get(tid)
+                buffer_labels = [lbl for lbl, _ in buf.buffer] if buf and buf.buffer else []
+                logger.debug(
+                    "Emotion [track %d / %s]: %d/%d stable=%s %s → %s",
+                    tid, name, emotion_samples,
+                    self.emotion_tracker.min_stable_samples,
+                    emotion_stable, buffer_labels, label,
+                )
+
+        t6 = time.perf_counter()
+
+        # ── Timing summary ───────────────────────────────────────────
+        cache_hits = sum(1 for r in raw_results if r.get("from_cache"))
+        encoded = len(raw_results) - cache_hits
+        logger.info(
+            "⏱ Frame %d: detect=%.0fms recog=%.0fms (encoded=%d cached=%d) "
+            "track=%.0fms attend=%.0fms emotion=%.0fms TOTAL=%.0fms faces=%d%s",
+            self.frame_count,
+            (t2 - t1) * 1000,
+            (t3 - t2) * 1000,
+            encoded,
+            cache_hits,
+            (t4 - t3) * 1000,
+            (t5 - t4) * 1000,
+            (t6 - t5) * 1000,
+            (t6 - t0) * 1000,
+            len(stable_results),
+            " [NEW_ATTENDANCE]" if any_newly_marked else "",
+        )
 
         return stable_results
 
@@ -322,8 +488,12 @@ class VisionSession:
             cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
 
             label = r.get("name", "Unknown") if registered else "Unknown"
+            emotion_stable = r.get("emotion_stable", False)
             emotion = r.get("emotion", "")
-            text = f"{label}" + (f" - {emotion}" if emotion else "")
+            if emotion_stable:
+                text = f"{label}" + (f" - {emotion}" if emotion else "")
+            else:
+                text = f"{label} - Detecting..."
 
             (tw, th), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
             cv2.rectangle(

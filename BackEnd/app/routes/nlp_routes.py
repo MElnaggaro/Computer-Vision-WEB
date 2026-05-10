@@ -4,8 +4,11 @@ from app.services.orchestrator.question_pipeline import QuestionPipeline
 
 router = APIRouter()
 
-# Share the pipeline in-memory
-_pipeline = QuestionPipeline()
+# Share the pipeline in-memory.
+# log_events=False because /classify is a primitive — student attribution
+# happens at the /interaction layer.  Logging here would create orphan
+# question events with student="Unknown" on every classify call.
+_pipeline = QuestionPipeline(log_events=False)
 
 class ClassifyRequest(BaseModel):
     question: str
