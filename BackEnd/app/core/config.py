@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     TRACK_IOU_THRESHOLD: float = 0.25            # IoU for cross‑frame matching
     ATTENDANCE_STABLE_FRAMES: int = 10           # stable frames before marking
 
+    # ── Emotion detection ────────────────────────────────────────────
+    EMOTION_DETECTION_INTERVAL: int = 5          # run detector every N recognition frames
+    EMOTION_BUFFER_SIZE: int = 10                # smoothing window (majority-vote frames)
+    EMOTION_MAX_STALE_FRAMES: int = 30           # drop buffer after N missed frames
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",

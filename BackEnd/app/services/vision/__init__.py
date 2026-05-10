@@ -6,6 +6,8 @@ from app.services.vision.encoding_manager import EncodingManager
 from app.services.vision.attendance_service import AttendanceService
 from app.services.vision.webcam_runner import ClassroomCamera
 from app.services.vision.face_tracker import FaceTracker
+from app.services.vision.emotion_detection import EmotionDetector
+from app.services.vision.emotion_tracker import EmotionTracker
 
 __all__ = [
     "FaceDetector",
@@ -14,4 +16,6 @@ __all__ = [
     "AttendanceService",
     "ClassroomCamera",
     "FaceTracker",
+    "EmotionDetector",
+    "EmotionTracker",
 ]

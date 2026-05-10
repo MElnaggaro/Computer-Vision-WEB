@@ -46,7 +46,7 @@ Step 4 — Verify attendance log:
       "student": "Mohammed_Ayman",
       "attendance": "Present",
       "registered": true,
-      "similarity": 0.91,
+      "emotion": "Happy",
       "timestamp": "2026-05-10T12:30:22+00:00"
     }
 
@@ -55,7 +55,7 @@ Step 4 — Verify attendance log:
       "student": "Unknown",
       "attendance": "Not Registered",
       "registered": false,
-      "similarity": 0.18,
+      "emotion": "Neutral",
       "timestamp": "2026-05-10T12:31:10+00:00"
     }
 """

@@ -9,6 +9,8 @@ Design decisions:
     • Each session writes a *list* of attendance records to the log file.
     • Unknown faces are logged with ``"attendance": "Not Registered"``
       so that the future admin‑approval flow can cross‑reference them.
+    • Emotion and emotion_confidence are optional fields — when provided
+      they are included in the log record for analytics.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ class AttendanceService:
         self._marked: Set[str] = set()          # student names marked so far
         self._records: List[AttendanceRecord] = []
         self._has_unsaved_changes: bool = False
-        
+
         # Load students already present in the log file to prevent duplicates across runs
         self._load_existing_students()
 
@@ -67,13 +69,17 @@ class AttendanceService:
         name: str,
         registered: bool,
         similarity: float,
+        emotion: Optional[str] = None,
+        emotion_confidence: Optional[float] = None,
     ) -> Optional[AttendanceRecord]:
         """Record a student's attendance if not already marked.
 
         Args:
-            name:       Student name or ``"Unknown"``.
-            registered: Whether the student was recognised.
-            similarity: Recognition similarity (0–1).
+            name:               Student name or ``"Unknown"``.
+            registered:         Whether the student was recognised.
+            similarity:         Recognition similarity (0–1).
+            emotion:            Classroom-friendly emotion label (optional).
+            emotion_confidence: Probability of the predicted emotion (0–1).
 
         Returns:
             The ``AttendanceRecord`` dict if newly marked, or ``None``
@@ -86,10 +92,14 @@ class AttendanceService:
 
         record: AttendanceRecord = {
             "student": name,
-            "attendance": "Present",
+            "attendance": "Present" if registered else "Not Registered",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "registered": registered,
         }
+
+        # Emotion fields — include label but skip confidence in logs as requested
+        if emotion is not None:
+            record["emotion"] = emotion
 
         if registered:
             self._marked.add(name)
@@ -97,9 +107,11 @@ class AttendanceService:
         self._records.append(record)
         self._has_unsaved_changes = True
         logger.info(
-            "Attendance marked: %s (Present, registered=%s)",
+            "Attendance marked: %s (%s, registered=%s, emotion=%s)",
             name,
+            record["attendance"],
             registered,
+            emotion or "N/A",
         )
         return record
 
