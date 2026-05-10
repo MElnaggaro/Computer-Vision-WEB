@@ -117,11 +117,17 @@ class EmotionTracker:
         buffer_size: int = 10,
         max_stale_frames: int = 30,
         detector: Optional[EmotionDetector] = None,
+        min_stable_samples: int = 5,
     ) -> None:
         self.emotion_interval = max(1, emotion_interval)
         self.buffer_size = max(1, buffer_size)
         self.max_stale_frames = max_stale_frames
         self.detector = detector or EmotionDetector()
+        # A track must have at least this many predictions before its
+        # smoothed emotion is considered "stable" (averaging window
+        # required by the project spec — prevents committing the first
+        # raw prediction as the final result).
+        self.min_stable_samples = max(1, min_stable_samples)
 
         self._buffers: Dict[int, _EmotionBuffer] = {}
 
@@ -180,6 +186,23 @@ class EmotionTracker:
         if buf is None:
             return None
         return buf.smoothed
+
+    def is_stable(self, track_id: int) -> bool:
+        """Return ``True`` once the track has accumulated enough samples.
+
+        Used by the attendance gate so we never commit a face's emotion
+        based on a single raw prediction — we wait for at least
+        ``min_stable_samples`` smoothed observations.
+        """
+        buf = self._buffers.get(track_id)
+        if buf is None:
+            return False
+        return len(buf.buffer) >= self.min_stable_samples
+
+    def sample_count(self, track_id: int) -> int:
+        """Number of emotion samples collected so far for the given track."""
+        buf = self._buffers.get(track_id)
+        return 0 if buf is None else len(buf.buffer)
 
     # ── Internals ────────────────────────────────────────────────────
 

@@ -177,6 +177,31 @@ class LogService:
 
         return self.append_event(event)
 
+    def log_registration_event(
+        self,
+        student: str,
+        approved: bool,
+        timestamp: Optional[str] = None,
+    ) -> EventRecord:
+        """Build and append a ``registration_approved`` / ``registration_rejected`` event.
+
+        Args:
+            student:   The candidate student name (``Firstname_Lastname``).
+            approved:  ``True`` for an approved registration, ``False`` for rejection.
+            timestamp: Optional ISO timestamp override.
+
+        Returns:
+            The persisted event dict.
+        """
+        event_type = "registration_approved" if approved else "registration_rejected"
+        event: EventRecord = {
+            "event": event_type,
+            "student": student,
+            "registered": bool(approved),
+            "timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
+        }
+        return self.append_event(event)
+
     def log_question_event(
         self,
         student: str,

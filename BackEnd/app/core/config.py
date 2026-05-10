@@ -64,6 +64,21 @@ class Settings(BaseSettings):
     EMOTION_BUFFER_SIZE: int = 10                # smoothing window (majority-vote frames)
     EMOTION_MAX_STALE_FRAMES: int = 30           # drop buffer after N missed frames
 
+    # ── Registration / Admin approval ───────────────────────────────
+    # WARNING: For production deployments, override ADMIN_CODEWORD via
+    # the ``.env`` file or an environment variable rather than committing
+    # a real secret to source control.
+    ADMIN_CODEWORD: str = "aiu"
+    REGISTRATION_MIN_IMAGES: int = 5
+    REGISTRATION_MAX_IMAGES: int = 10
+    REGISTRATION_NAME_PATTERN: str = r"^[A-Za-z]+_[A-Za-z]+$"
+
+    # ── Emotion stability gate ───────────────────────────────────────
+    # Attendance is logged only after the emotion tracker has collected
+    # at least this many samples for the face — preventing the "first
+    # frame's emotion" from being committed before any averaging.
+    EMOTION_MIN_STABLE_SAMPLES: int = 5
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",

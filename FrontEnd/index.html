@@ -251,11 +251,18 @@
                                 <div class="qo-text">—</div>
                                 <div class="qo-topic">Topic: <strong>—</strong></div>
                             </div>
+
+                            <!-- Mic Countdown Overlay (Preparing → 3 → 2 → 1 → Speak now) -->
+                            <div class="mic-countdown" id="mic-countdown" hidden>
+                                <div class="mic-countdown-label" id="mic-countdown-label">Preparing microphone…</div>
+                                <div class="mic-countdown-number" id="mic-countdown-number">3</div>
+                            </div>
                         </div>
 
                         <!-- Controls Bar -->
                         <div class="camera-controls">
                             <button class="dash-btn primary" id="dash-camera-btn" data-cursor="hover">Start Camera</button>
+                            <button class="dash-btn" id="dash-load-attendance-btn" data-cursor="hover">Load Attendance</button>
                             <button class="mic-orb" id="dash-mic-orb" data-cursor="hover">
                                 <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                             </button>
@@ -266,6 +273,27 @@
                             <div class="action-buttons" style="display:none;">
                                 <button class="dash-btn primary" id="dash-register-btn" data-cursor="hover">Register Stranger</button>
                                 <button class="dash-btn" id="dash-guest-btn" data-cursor="hover">Continue as Guest</button>
+                            </div>
+                        </div>
+
+                        <!-- Inline Admin Approval Panel — shown after capture+name -->
+                        <div class="admin-panel" id="admin-panel" hidden>
+                            <div class="admin-panel-header">
+                                <span class="admin-panel-icon">🔐</span>
+                                <div class="admin-panel-titles">
+                                    <div class="admin-panel-title">Admin Approval Required</div>
+                                    <div class="admin-panel-subtitle" id="admin-target-name">Pending student</div>
+                                </div>
+                            </div>
+                            <input class="admin-input-inline"
+                                   id="admin-pass-input"
+                                   type="password"
+                                   placeholder="Enter admin password"
+                                   autocomplete="off">
+                            <div class="admin-panel-hint" id="admin-panel-hint">Type the admin password to enable approval.</div>
+                            <div class="admin-panel-actions">
+                                <button class="dash-btn primary" id="admin-approve-btn" data-cursor="hover" disabled>Approve</button>
+                                <button class="dash-btn" id="admin-reject-btn" data-cursor="hover" disabled>Reject</button>
                             </div>
                         </div>
                     </div>
@@ -284,7 +312,7 @@
                             <div class="panel-scroll" id="log-feed">
                                 <div class="panel-empty">
                                     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                    <span>Waiting for events…</span>
+                                    <span>Waiting for live events…</span>
                                 </div>
                             </div>
                         </div>
@@ -300,7 +328,7 @@
                             <div class="panel-scroll" id="question-feed">
                                 <div class="panel-empty">
                                     <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                                    <span>No questions yet</span>
+                                    <span>No questions yet.</span>
                                 </div>
                             </div>
                         </div>
@@ -315,7 +343,7 @@
                             </span>
                         </div>
                         <div class="summary-grid" id="summary-grid">
-                            <div class="summary-empty">No students detected yet</div>
+                            <div class="summary-empty">No students detected yet.</div>
                         </div>
                     </div>
 
@@ -324,15 +352,15 @@
             </section>
 
             <!-- ══════════════════════════════════════════ -->
-            <!-- REGISTRATION MODAL                        -->
+            <!-- REGISTRATION MODAL — capture + name only.  -->
+            <!-- Admin approval is handled by the inline    -->
+            <!-- panel inside the camera card (no modal).   -->
             <!-- ══════════════════════════════════════════ -->
             <div class="modal-overlay" id="registration-modal">
                 <div class="modal-panel">
                     <button class="modal-close" data-cursor="hover">&times;</button>
                     <div class="step-progress">
                         <div class="step-dot active"></div>
-                        <div class="step-dot"></div>
-                        <div class="step-dot"></div>
                         <div class="step-dot"></div>
                     </div>
 
@@ -360,31 +388,13 @@
                             <button class="dash-btn primary" id="name-next-btn" data-cursor="hover">Continue →</button>
                         </div>
                     </div>
-
-                    <!-- STEP 2: Admin Approval -->
-                    <div class="modal-step">
-                        <h3 class="modal-title">Pending Admin Approval</h3>
-                        <p class="modal-subtitle">Enter admin codeword to verify registration</p>
-                        <input class="modal-input" id="admin-code-input" type="password" placeholder="Admin codeword" autocomplete="off">
-                        <div class="modal-actions">
-                            <button class="dash-btn primary" id="modal-approve-btn" data-cursor="hover">Approve</button>
-                            <button class="dash-btn" id="modal-cancel-btn" data-cursor="hover">Reject</button>
-                        </div>
-                    </div>
-
-                    <!-- STEP 3: Result -->
-                    <div class="modal-step" id="reg-result">
-                        <div class="result-state">
-                            <div class="result-icon" id="reg-result-icon">✅</div>
-                            <h3 id="reg-result-title">Registration Approved</h3>
-                            <p id="reg-result-msg">Welcome</p>
-                        </div>
-                        <div class="modal-actions">
-                            <button class="dash-btn primary" id="reg-done-btn" data-cursor="hover">Done</button>
-                        </div>
-                    </div>
                 </div>
             </div>
+
+            <!-- ══════════════════════════════════════════ -->
+            <!-- TOAST NOTIFICATIONS                       -->
+            <!-- ══════════════════════════════════════════ -->
+            <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
             <!-- Footer -->
             <!-- <footer class="footer">
@@ -399,6 +409,7 @@
     </main>
 
     <!-- Application Logic (order matters) -->
+    <script src="JS/config.js" defer></script>
     <script src="JS/intro-cinematic.js" defer></script>
     <script src="JS/three-scene.js" defer></script>
     <script src="JS/script.js" defer></script>

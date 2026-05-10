@@ -1,0 +1,53 @@
+[
+  {
+    "event": "question",
+    "student": "Unknown",
+    "question": "How does the sliding window protocol work?",
+    "topic": "Computer Networks",
+    "classification_confidence": 0.9541,
+    "timestamp": "2026-05-10T11:40:42.792158+00:00",
+    "registered": false
+  },
+  {
+    "event": "question",
+    "student": "Mohammed_Ayman",
+    "question": "What is TCP handshake?",
+    "topic": "Computer Networks",
+    "classification_confidence": 0.6889,
+    "timestamp": "2026-05-10T11:42:09.811135+00:00",
+    "registered": false,
+    "source": "interaction_ask_question"
+  },
+  {
+    "event": "question",
+    "student": "Unknown",
+    "question": "Explain semaphore",
+    "topic": "Operating System",
+    "classification_confidence": 0.7593,
+    "timestamp": "2026-05-10T11:42:10.040141+00:00",
+    "registered": false,
+    "source": "interaction_ask_question"
+  },
+  {
+    "event": "question",
+    "student": "Mohammed_Ayman",
+    "question": "What is a semaphore?",
+    "topic": "Operating System",
+    "classification_confidence": 0.9155,
+    "timestamp": "2026-05-10T11:42:10.247611+00:00",
+    "registered": false,
+    "source": "interaction_ask_question"
+  },
+  {
+    "event": "registration_approved",
+    "student": "Ahmed_Ali",
+    "registered": true,
+    "timestamp": "2026-05-10T11:42:10.295339+00:00"
+  },
+  {
+    "event": "registration_rejected",
+    "student": "Reject_Me",
+    "registered": false,
+    "timestamp": "2026-05-10T11:42:10.334699+00:00"
+  }
+]

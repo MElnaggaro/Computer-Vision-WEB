@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:\\\\Users\\\\nonok\\\\.claude\\\\projects\\\\D--PROJECTS-Computer-Vision-PROJECT\\\\memory\")",
+      "Bash(dir D:\\\\PROJECTS\\\\Computer-Vision-PROJECT)",
+      "Bash(python -m pytest tests/test_registration.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_api_routes.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_vision.py --tb=short)",
+      "Bash(python -m pytest tests/test_full_integration.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_speech.py tests/test_nlp.py --tb=short)",
+      "Bash(python -m pytest tests/test_speech.py --tb=short)",
+      "Bash(python -m pytest tests/test_nlp.py --tb=line)",
+      "Bash(python -m pytest tests/test_nlp.py --tb=line -q)",
+      "Bash(python -u BackEnd/run.py --no-browser --backend-port 8765 --frontend-port 5765 --health-timeout 30)",
+      "Bash(python -m pytest tests/test_vision.py tests/test_speech.py tests/test_registration.py tests/test_api_routes.py tests/test_full_integration.py -q)"
+    ]
+  }
+}
