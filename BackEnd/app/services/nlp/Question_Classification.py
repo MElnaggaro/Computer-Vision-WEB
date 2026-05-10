@@ -84,7 +84,8 @@ def train_and_save(
         raise ValueError("CSV must contain 'question' and 'topic' columns.")
 
     df = df.dropna(subset=["question", "topic"])
-    X, y = df["question"].tolist(), df["topic"].tolist()
+    import numpy as np
+    X, y = df["question"].tolist(), np.array(df["topic"].tolist())
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y

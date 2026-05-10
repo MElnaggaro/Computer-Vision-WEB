@@ -13,6 +13,7 @@
     
     <!-- Styles -->
     <link rel="stylesheet" href="CSS/styles.css">
+    <link rel="stylesheet" href="CSS/dashboard.css">
     
     <!-- Libraries -->
     <!-- GSAP & ScrollTrigger -->
@@ -191,86 +192,199 @@
                 </div>
             </section>
 
-            <!-- Interactive Demo Section — Full-viewport sub-sections for scroll-driven 3D -->
+            <!-- ══════════════════════════════════════════ -->
+            <!-- LIVE SMART CLASSROOM DASHBOARD v2         -->
+            <!-- ══════════════════════════════════════════ -->
             <section class="demo-section" id="demo">
 
-                <!-- STEP 1: Camera Module (model → RIGHT) -->
-                <div class="demo-step" id="camera-section">
-                    <div class="demo-step-inner">
-                        <div class="demo-module camera-module glass-panel">
-                            <div class="module-header">
-                                <span class="module-label">Camera</span>
-                            </div>
-                            <div class="camera-preview" id="camera-preview-container">
-                                <video id="demo-video" autoplay playsinline muted></video>
-                                <div class="camera-placeholder" id="camera-placeholder">
-                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                                    <p>Camera Offline</p>
-                                </div>
-                            </div>
-                            <div class="module-controls">
-                                <button id="camera-toggle-btn" class="btn btn-secondary">Start Camera</button>
-                            </div>
-                        </div>
+                <!-- Dashboard Header -->
+                <div class="dashboard-header">
+                    <h2 class="section-title">Live <span class="gradient-text">Dashboard</span></h2>
+                    <p class="section-subtitle">Real-time classroom intelligence</p>
+                    <div class="dashboard-status-bar">
+                        <div class="status-dot offline"></div>
+                        <span class="status-label">System Standby</span>
                     </div>
                 </div>
 
-                <!-- STEP 2: Voice Module (model → LEFT) -->
-                <div class="demo-step" id="voice-section">
-                    <div class="demo-step-inner">
-                        <div class="demo-module voice-module glass-panel">
-                            <div class="module-header">
-                                <span class="module-label">Voice Input</span>
+                <!-- ═══════ Main Dashboard Grid ═══════ -->
+                <div class="dashboard-grid">
+
+                    <!-- ─── LEFT: Camera + Controls ─── -->
+                    <div class="dash-card" id="camera-panel">
+                        <div class="dash-card-header">
+                            <span class="dash-card-title">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                Camera Feed
+                            </span>
+                            <span class="dash-card-badge" id="camera-badge">STANDBY</span>
+                        </div>
+
+                        <div class="camera-feed-wrapper">
+                            <video id="dash-camera-video" autoplay playsinline muted></video>
+                            <div class="scan-line"></div>
+                            <div class="corner-bracket tl"></div>
+                            <div class="corner-bracket tr"></div>
+                            <div class="corner-bracket bl"></div>
+                            <div class="corner-bracket br"></div>
+                            <div class="cam-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                <span>Camera Offline</span>
+                                <span class="offline-msg">Backend connection unavailable</span>
                             </div>
-                            <div class="mic-container">
-                                <button class="mic-btn" id="demo-mic-btn" data-cursor="hover">
-                                    <svg class="mic-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-                                </button>
-                                <p class="voice-text" id="voice-status-text">Ready to record</p>
+
+                            <!-- Identity Card Overlay -->
+                            <div class="identity-card">
+                                <div class="id-avatar">?</div>
+                                <div class="id-info">
+                                    <span class="id-name">—</span>
+                                    <div class="id-status-row">
+                                        <span class="id-attendance">—</span>
+                                        <span class="id-emotion">😐 Neutral</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="module-controls">
-                                <button id="mic-toggle-btn" class="btn btn-secondary">Start Recording</button>
+
+                            <!-- Question Overlay -->
+                            <div class="question-overlay">
+                                <div class="qo-label">Question</div>
+                                <div class="qo-text">—</div>
+                                <div class="qo-topic">Topic: <strong>—</strong></div>
+                            </div>
+                        </div>
+
+                        <!-- Controls Bar -->
+                        <div class="camera-controls">
+                            <button class="dash-btn primary" id="dash-camera-btn" data-cursor="hover">Start Camera</button>
+                            <button class="mic-orb" id="dash-mic-orb" data-cursor="hover">
+                                <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            </button>
+                            <span class="mic-label" id="dash-mic-label">Ask a Question</span>
+                            <div class="wave-bars">
+                                <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                            </div>
+                            <div class="action-buttons" style="display:none;">
+                                <button class="dash-btn primary" id="dash-register-btn" data-cursor="hover">Register Stranger</button>
+                                <button class="dash-btn" id="dash-guest-btn" data-cursor="hover">Continue as Guest</button>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- STEP 3: AI Result Module (model → CENTER) -->
-                <div class="demo-step" id="result-section">
-                    <div class="demo-step-inner">
-                        <div class="demo-module result-module glass-panel full-width">
-                            <div class="module-header">
-                                <span class="module-label">AI Analysis</span>
+                    <!-- ─── RIGHT: Stacked Panels ─── -->
+                    <div class="right-column">
+
+                        <!-- Panel 1: Live Event Feed -->
+                        <div class="dash-card" id="log-panel">
+                            <div class="dash-card-header">
+                                <span class="dash-card-title">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                                    Live Events
+                                </span>
                             </div>
-                            <div class="result-content" id="result-content">
-                                <div class="result-grid">
-                                    <div class="result-item">
-                                        <span class="result-label">Student Name</span>
-                                        <span class="result-val">ORGANZA</span>
-                                    </div>
-                                    <div class="result-item">
-                                        <span class="result-label">Attendance</span>
-                                        <span class="result-val status-green">Present</span>
-                                    </div>
-                                    <div class="result-item">
-                                        <span class="result-label">Mood</span>
-                                        <span class="result-val mood-tired">Tired</span>
-                                    </div>
-                                    <div class="result-item full-span">
-                                        <span class="result-label">Question</span>
-                                        <span class="result-val italic" id="final-question-text">"Waiting for input..."</span>
-                                    </div>
-                                    <div class="result-item full-span highlight-box">
-                                        <span class="result-label">Topic</span>
-                                        <span class="result-val gradient-text" id="final-topic-text">Awaiting Analysis</span>
-                                    </div>
+                            <div class="panel-scroll" id="log-feed">
+                                <div class="panel-empty">
+                                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                    <span>Waiting for events…</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Panel 2: Question History -->
+                        <div class="dash-card" id="question-panel">
+                            <div class="dash-card-header">
+                                <span class="dash-card-title">
+                                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                                    Question History
+                                </span>
+                            </div>
+                            <div class="panel-scroll" id="question-feed">
+                                <div class="panel-empty">
+                                    <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                                    <span>No questions yet</span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+
+                    <!-- ─── BOTTOM: Student Summaries (full width) ─── -->
+                    <div class="dash-card summary-section">
+                        <div class="dash-card-header">
+                            <span class="dash-card-title">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                Student Summaries
+                            </span>
+                        </div>
+                        <div class="summary-grid" id="summary-grid">
+                            <div class="summary-empty">No students detected yet</div>
+                        </div>
+                    </div>
+
+                </div><!-- /dashboard-grid -->
 
             </section>
+
+            <!-- ══════════════════════════════════════════ -->
+            <!-- REGISTRATION MODAL                        -->
+            <!-- ══════════════════════════════════════════ -->
+            <div class="modal-overlay" id="registration-modal">
+                <div class="modal-panel">
+                    <button class="modal-close" data-cursor="hover">&times;</button>
+                    <div class="step-progress">
+                        <div class="step-dot active"></div>
+                        <div class="step-dot"></div>
+                        <div class="step-dot"></div>
+                        <div class="step-dot"></div>
+                    </div>
+
+                    <!-- STEP 0: Capture -->
+                    <div class="modal-step active">
+                        <h3 class="modal-title">Register New Student</h3>
+                        <p class="modal-subtitle">Capture 5–10 face images for recognition training</p>
+                        <div class="capture-preview">
+                            <video id="capture-preview-video" autoplay playsinline muted></video>
+                        </div>
+                        <p class="capture-count" id="capture-count"><strong>0</strong> / 10 captured</p>
+                        <div class="modal-actions">
+                            <button class="dash-btn primary" id="modal-capture-btn" data-cursor="hover">📸 Capture Frame</button>
+                        </div>
+                    </div>
+
+                    <!-- STEP 1: Name -->
+                    <div class="modal-step">
+                        <h3 class="modal-title">Enter Student Name</h3>
+                        <p class="modal-subtitle">Use format: Firstname_Lastname</p>
+                        <input class="modal-input" id="reg-name-input" type="text" placeholder="Firstname_Lastname" autocomplete="off">
+                        <p class="input-hint">Letters and underscores only</p>
+                        <p class="input-error" id="name-error">⚠ Invalid format. Use Firstname_Lastname</p>
+                        <div class="modal-actions">
+                            <button class="dash-btn primary" id="name-next-btn" data-cursor="hover">Continue →</button>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2: Admin Approval -->
+                    <div class="modal-step">
+                        <h3 class="modal-title">Pending Admin Approval</h3>
+                        <p class="modal-subtitle">Enter admin codeword to verify registration</p>
+                        <input class="modal-input" id="admin-code-input" type="password" placeholder="Admin codeword" autocomplete="off">
+                        <div class="modal-actions">
+                            <button class="dash-btn primary" id="modal-approve-btn" data-cursor="hover">Approve</button>
+                            <button class="dash-btn" id="modal-cancel-btn" data-cursor="hover">Reject</button>
+                        </div>
+                    </div>
+
+                    <!-- STEP 3: Result -->
+                    <div class="modal-step" id="reg-result">
+                        <div class="result-state">
+                            <div class="result-icon" id="reg-result-icon">✅</div>
+                            <h3 id="reg-result-title">Registration Approved</h3>
+                            <p id="reg-result-msg">Welcome</p>
+                        </div>
+                        <div class="modal-actions">
+                            <button class="dash-btn primary" id="reg-done-btn" data-cursor="hover">Done</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Footer -->
             <!-- <footer class="footer">
@@ -288,6 +402,6 @@
     <script src="JS/intro-cinematic.js"></script>
     <script src="JS/three-scene.js"></script>
     <script src="JS/script.js"></script>
-    <script src="JS/interactive-demo.js"></script>
+    <script src="JS/dashboard.js"></script>
 </body>
 </html>
