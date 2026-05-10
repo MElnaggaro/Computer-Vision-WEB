@@ -29,6 +29,12 @@
       "encoding_file": "Rewan_Mosad.pkl",
       "num_images": 7,
       "last_updated": 1778430394
+    },
+    "Maryam_Ali": {
+      "folder_fingerprint": "331bae15167d47953be97af3225a461cd545559e",
+      "encoding_file": "Maryam_Ali.pkl",
+      "num_images": 13,
+      "last_updated": 1778430956
     }
   }
 }
