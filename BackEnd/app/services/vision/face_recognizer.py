@@ -64,7 +64,7 @@ class FaceRecognizer:
 
         Returns:
             List of result dicts, one per face:
-            ``{"name": str, "known": bool, "similarity": float, "distance": float, "location": tuple}``
+            ``{"name": str, "registered": bool, "similarity": float, "distance": float, "location": tuple}``
         """
         if not self.encoding_manager.is_loaded:
             logger.warning("No encodings loaded – all faces will be Unknown.")

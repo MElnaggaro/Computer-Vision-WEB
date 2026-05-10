@@ -87,7 +87,7 @@ async def build_encodings() -> BuildEncodingsResponse:
 async def recognize_frame(payload: FramePayload) -> RecognizeFrameResponse:
     """Decode a base64 frame, detect faces, and recognise each one.
 
-    Returns structured results (name / known / confidence / location).
+    Returns structured results (name / registered / similarity / location).
     """
     frame = _decode_frame(payload.image_base64)
 
@@ -122,8 +122,8 @@ async def start_attendance(payload: FramePayload) -> AttendanceStatusResponse:
     for result in results:
         record = _attendance_service.mark_attendance(
             name=result["name"],
-            known=result["known"],
-            confidence=result["confidence"],
+            registered=result["registered"],
+            similarity=result["similarity"],
         )
         if record is not None:
             new_records.append(record)

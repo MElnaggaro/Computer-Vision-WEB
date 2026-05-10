@@ -45,8 +45,8 @@ Step 4 — Verify attendance log:
     {
       "student": "Mohammed_Ayman",
       "attendance": "Present",
-      "known": true,
-      "confidence": 0.91,
+      "registered": true,
+      "similarity": 0.91,
       "timestamp": "2026-05-10T12:30:22+00:00"
     }
 
@@ -54,8 +54,8 @@ Step 4 — Verify attendance log:
     {
       "student": "Unknown",
       "attendance": "Not Registered",
-      "known": false,
-      "confidence": 0.18,
+      "registered": false,
+      "similarity": 0.18,
       "timestamp": "2026-05-10T12:31:10+00:00"
     }
 """
