@@ -32,6 +32,14 @@ from app.services.vision.emotion_detection import EmotionDetector, _LABEL_MAP
 from app.services.vision.emotion_tracker import EmotionTracker, _EmotionBuffer
 
 
+@pytest.fixture(autouse=True)
+def reset_emotion_detector():
+    """Reset the EmotionDetector singleton between tests to prevent state leakage."""
+    EmotionDetector._instance = None
+    yield
+    EmotionDetector._instance = None
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════════════
@@ -41,13 +49,11 @@ def _make_face_crop(h: int = 80, w: int = 80) -> np.ndarray:
     return np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
 
 
-def _make_deepface_response(dominant: str = "happy", score: float = 0.85) -> list:
-    """Simulate a DeepFace.analyze() return value."""
-    return [{
-        "dominant_emotion": dominant,
-        "emotion": {k: 5.0 for k in _LABEL_MAP.keys()}
-        | {dominant: score * 100},
-    }]
+def _make_fer_response(dominant: str = "happy", score: float = 0.85) -> list:
+    """Simulate a FER.detect_emotions() return value."""
+    emotions = {k: 0.01 for k in _LABEL_MAP.keys()}
+    emotions[dominant] = score
+    return [{"emotions": emotions}]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -60,15 +66,11 @@ class TestEmotionDetector:
     def test_predict_happy_face(self) -> None:
         """Should correctly map 'happy' → 'Happy' with high confidence."""
         detector = EmotionDetector()
+        mock_fer = MagicMock()
+        mock_fer.detect_emotions.return_value = _make_fer_response("happy", 0.92)
+        detector._model = mock_fer
 
-        with patch(
-            "app.services.vision.emotion_detection._get_deepface"
-        ) as mock_get_df:
-            mock_df = MagicMock()
-            mock_df.analyze.return_value = _make_deepface_response("happy", 0.92)
-            mock_get_df.return_value = mock_df
-
-            result = detector.predict(_make_face_crop())
+        result = detector.predict(_make_face_crop())
 
         assert result["label"] == "Happy"
         assert result["confidence"] > 0.0
@@ -77,30 +79,22 @@ class TestEmotionDetector:
     def test_predict_fear_maps_to_anxious(self) -> None:
         """'fear' raw label should map to classroom-friendly 'Anxious'."""
         detector = EmotionDetector()
+        mock_fer = MagicMock()
+        mock_fer.detect_emotions.return_value = _make_fer_response("fear", 0.75)
+        detector._model = mock_fer
 
-        with patch(
-            "app.services.vision.emotion_detection._get_deepface"
-        ) as mock_get_df:
-            mock_df = MagicMock()
-            mock_df.analyze.return_value = _make_deepface_response("fear", 0.75)
-            mock_get_df.return_value = mock_df
-
-            result = detector.predict(_make_face_crop())
+        result = detector.predict(_make_face_crop())
 
         assert result["label"] == "Anxious"
 
     def test_predict_disgust_maps_to_uncomfortable(self) -> None:
         """'disgust' should map to 'Uncomfortable'."""
         detector = EmotionDetector()
+        mock_fer = MagicMock()
+        mock_fer.detect_emotions.return_value = _make_fer_response("disgust", 0.60)
+        detector._model = mock_fer
 
-        with patch(
-            "app.services.vision.emotion_detection._get_deepface"
-        ) as mock_get_df:
-            mock_df = MagicMock()
-            mock_df.analyze.return_value = _make_deepface_response("disgust", 0.60)
-            mock_get_df.return_value = mock_df
-
-            result = detector.predict(_make_face_crop())
+        result = detector.predict(_make_face_crop())
 
         assert result["label"] == "Uncomfortable"
 
@@ -122,15 +116,11 @@ class TestEmotionDetector:
     def test_predict_returns_fallback_on_deepface_error(self) -> None:
         """If DeepFace raises, should return a neutral fallback."""
         detector = EmotionDetector()
+        mock_fer = MagicMock()
+        mock_fer.detect_emotions.side_effect = RuntimeError("Model error")
+        detector._model = mock_fer
 
-        with patch(
-            "app.services.vision.emotion_detection._get_deepface"
-        ) as mock_get_df:
-            mock_df = MagicMock()
-            mock_df.analyze.side_effect = RuntimeError("Model error")
-            mock_get_df.return_value = mock_df
-
-            result = detector.predict(_make_face_crop())
+        result = detector.predict(_make_face_crop())
 
         assert result["label"] == "Neutral"
 
@@ -148,19 +138,15 @@ class TestEmotionDetector:
     def test_predict_list_response_uses_first_element(self) -> None:
         """DeepFace sometimes returns a list; should use the first element."""
         detector = EmotionDetector()
+        mock_fer = MagicMock()
+        # List with two faces — only first should be used
+        mock_fer.detect_emotions.return_value = [
+            {"emotions": {"sad": 0.70, "happy": 0.30}},
+            {"emotions": {"happy": 0.90}},
+        ]
+        detector._model = mock_fer
 
-        with patch(
-            "app.services.vision.emotion_detection._get_deepface"
-        ) as mock_get_df:
-            mock_df = MagicMock()
-            # List with two faces — only first should be used
-            mock_df.analyze.return_value = [
-                {"dominant_emotion": "sad", "emotion": {"sad": 70.0, "happy": 30.0}},
-                {"dominant_emotion": "happy", "emotion": {"happy": 90.0}},
-            ]
-            mock_get_df.return_value = mock_df
-
-            result = detector.predict(_make_face_crop())
+        result = detector.predict(_make_face_crop())
 
         assert result["label"] == "Sad"
 

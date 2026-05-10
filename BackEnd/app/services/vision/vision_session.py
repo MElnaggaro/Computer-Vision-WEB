@@ -82,7 +82,7 @@ class VisionSession:
     # within this many seconds.  Configurable via ACTIVE_STUDENT_TTL_S.
     ACTIVE_STUDENT_TTL_SECONDS: float = 8.0
 
-    def __init__(self, enable_emotion: bool = False) -> None:
+    def __init__(self, enable_emotion: bool = True) -> None:
         # ── 1. Static configuration ──────────────────────────────────
         self.enable_emotion = enable_emotion
 
@@ -339,13 +339,14 @@ class VisionSession:
         # Once attendance is logged, emotion sampling begins and the
         # frontend shows the averaged result after ~5 samples.
         for result in stable_results:
-            label, confidence = "Neutral", 0.0
-            emotion_stable = self.emotion_tracker is None
+            label = None
+            confidence = 0.0
+            emotion_stable = False
             emotion_samples = 0
             name = result.get("name", "Unknown")
-            already_marked = self.attendance_service.already_marked(name)
+            eligible_for_emotion = self.attendance_service.already_marked(name) or self.attendance_service.is_guest(name)
 
-            if already_marked and self.emotion_tracker is not None:
+            if eligible_for_emotion and self.emotion_tracker is not None:
                 tid = result.get("track_id", -1)
                 loc = result.get("location")
                 if loc is not None and tid >= 0:
@@ -364,19 +365,32 @@ class VisionSession:
                         emotion_stable = self.emotion_tracker.is_stable(tid)
                         emotion_samples = self.emotion_tracker.sample_count(tid)
 
-            result["emotion"] = label
-            result["emotion_confidence"] = round(confidence, 4)
+                        if emotion_stable:
+                            logged = self.attendance_service.log_emotion(name, label, emotion_samples)
+                            if logged:
+                                logger.info(
+                                    "🧠 EMOTION FINALIZED: %s → %s (samples=%d)",
+                                    name, label, emotion_samples,
+                                )
+
+            # Only include emotion in result if we actually ran emotion analysis
+            if label is not None:
+                result["emotion"] = label
+                result["emotion_confidence"] = round(confidence, 4)
+            else:
+                result["emotion"] = None
+                result["emotion_confidence"] = 0.0
             result["emotion_stable"] = bool(emotion_stable)
             result["emotion_samples"] = int(emotion_samples)
             result.setdefault("newly_marked", False)
 
-            # Debug logging for emotion buffer (only for marked faces)
-            if already_marked and self.emotion_tracker is not None:
+            # Emotion pipeline debug logging (only for marked faces)
+            if eligible_for_emotion and self.emotion_tracker is not None:
                 tid = result.get("track_id", -1)
                 buf = self.emotion_tracker._buffers.get(tid)
                 buffer_labels = [lbl for lbl, _ in buf.buffer] if buf and buf.buffer else []
-                logger.debug(
-                    "Emotion [track %d / %s]: %d/%d stable=%s %s → %s",
+                logger.info(
+                    "🧠 Emotion [track %d / %s]: sample %d/%d stable=%s buffer=%s → %s",
                     tid, name, emotion_samples,
                     self.emotion_tracker.min_stable_samples,
                     emotion_stable, buffer_labels, label,

@@ -161,8 +161,6 @@ class AttendanceService:
             student=name,
             attendance=attendance_status,
             registered=registered,
-            emotion=emotion,
-            emotion_confidence=emotion_confidence,
             timestamp=timestamp,
         )
 
@@ -173,11 +171,12 @@ class AttendanceService:
         student_record: AttendanceRecord = {
             "student": name,
             "attendance": attendance_status,
-            "emotion": emotion or "Neutral",
-            "emotion_confidence": round(emotion_confidence, 4) if emotion_confidence else 0.0,
+            "emotion": "Analyzing...",
+            "emotion_confidence": 0.0,
             "timestamp": timestamp,
             "registered": registered,
             "questions": [],
+            "emotion_logged": False,
         }
         self._student_state[name] = student_record
 
@@ -185,11 +184,10 @@ class AttendanceService:
             self._marked.add(name)
 
         logger.info(
-            "Attendance marked: %s (%s, registered=%s, emotion=%s)",
+            "Attendance marked: %s (%s, registered=%s)",
             name,
             attendance_status,
             registered,
-            emotion or "N/A",
         )
         return student_record
 
@@ -227,12 +225,13 @@ class AttendanceService:
         student_record: AttendanceRecord = {
             "student": guest_name,
             "attendance": "Present",
-            "emotion": "Neutral",
+            "emotion": "Analyzing...",
             "emotion_confidence": 0.0,
             "timestamp": timestamp,
             "registered": False,
             "is_guest": True,
             "questions": [],
+            "emotion_logged": False,
         }
         self._student_state[guest_name] = student_record
         logger.info("Guest registered: %s", guest_name)
@@ -301,12 +300,13 @@ class AttendanceService:
                 "attendance": "Present" if registered else (
                     "Guest" if student_name.startswith("Guest_") else "Unregistered"
                 ),
-                "emotion": "Neutral",
+                "emotion": "Analyzing...",
                 "emotion_confidence": 0.0,
                 "timestamp": timestamp,
                 "registered": registered,
                 "is_guest": student_name.startswith("Guest_"),
                 "questions": [],
+                "emotion_logged": False,
             }
         if student_name in self._student_state:
             self._student_state[student_name]["questions"].append({
@@ -329,6 +329,32 @@ class AttendanceService:
     def already_marked(self, name: str) -> bool:
         """Return ``True`` if the student was already marked present."""
         return name in self._marked
+
+    def log_emotion(self, name: str, mood: str, samples: int) -> Optional[EventRecord]:
+        """Record the final stable emotion for a tracked student.
+        
+        This separates the emotion logging from the initial attendance
+        logging to avoid blocking the recognition pipeline.
+        """
+        state = self._student_state.get(name)
+        if not state:
+            return None
+        if state.get("emotion_logged", False):
+            return None
+            
+        registered = state.get("registered", False)
+        persisted_event = self._log_service.log_emotion_event(
+            student=name,
+            mood=mood,
+            registered=registered,
+            samples=samples,
+        )
+        self._events.append(persisted_event)
+        
+        state["emotion"] = mood
+        state["emotion_logged"] = True
+        logger.info("Emotion finalised for %s: %s (samples=%d)", name, mood, samples)
+        return persisted_event
 
     def get_student_state(self, name: str) -> Optional[AttendanceRecord]:
         """Get the current state for a specific student.

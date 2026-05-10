@@ -1,0 +1,17 @@
+[
+  {
+    "event": "attendance",
+    "student": "Mohammed_Ayman",
+    "attendance": "Present",
+    "registered": true,
+    "timestamp": "2026-05-10T17:22:01.879046+00:00"
+  },
+  {
+    "event": "emotion",
+    "student": "Mohammed_Ayman",
+    "mood": "Neutral",
+    "registered": true,
+    "samples": 5,
+    "timestamp": "2026-05-10T17:22:05.123691+00:00"
+  }
+]

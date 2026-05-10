@@ -71,8 +71,6 @@ class TestEventBasedLogging:
             name="Ahmed_Ali",
             registered=True,
             similarity=0.85,
-            emotion="Happy",
-            emotion_confidence=0.92,
         )
         event = attendance.records[0]
 
@@ -81,8 +79,6 @@ class TestEventBasedLogging:
         assert event["student"] == "Ahmed_Ali"
         assert event["attendance"] == "Present"
         assert event["registered"] is True
-        assert event["emotion"] == "Happy"
-        assert event["emotion_confidence"] == 0.92
 
     def test_question_event_has_correct_type(self, attendance):
         """Adding a question creates a 'question' event."""
@@ -264,19 +260,20 @@ class TestLogPersistence:
         assert result1 is not None
         assert result2 is None  # duplicate
 
-    def test_emotion_confidence_in_log(self, attendance, log_file):
-        """emotion_confidence is persisted in the log."""
+    def test_emotion_in_log(self, attendance, log_file):
+        """emotion is persisted in the log."""
         attendance.mark_attendance(
             name="Ahmed_Ali",
             registered=True,
             similarity=0.85,
-            emotion="Tired",
-            emotion_confidence=0.76,
         )
+        attendance.log_emotion("Ahmed_Ali", "Tired", 5)
         attendance.save_log()
 
         data = json.loads(log_file.read_text(encoding="utf-8"))
-        assert data[0]["emotion_confidence"] == 0.76
+        assert data[1]["event"] == "emotion"
+        assert data[1]["mood"] == "Tired"
+        assert data[1]["samples"] == 5
 
 
 # ── Test 5 — Session reset ──────────────────────────────────────────
@@ -350,9 +347,10 @@ class TestFullIntegrationWithNLP:
             name="Mohammed_Ayman",
             registered=True,
             similarity=0.92,
-            emotion="Happy",
-            emotion_confidence=0.88,
         )
+        
+        # Log emotion separately
+        attendance.log_emotion("Mohammed_Ayman", "Happy", 5)
 
         # 2. Student asks a question (text-only, no mic)
         pipeline = QuestionPipeline(log_events=False)
@@ -372,20 +370,23 @@ class TestFullIntegrationWithNLP:
         attendance.save_log()
 
         data = json.loads(log_file.read_text(encoding="utf-8"))
-        assert len(data) == 2
+        assert len(data) == 3
 
         # Attendance event
         assert data[0]["event"] == "attendance"
         assert data[0]["student"] == "Mohammed_Ayman"
-        assert data[0]["emotion"] == "Happy"
-        assert data[0]["emotion_confidence"] == 0.88
+
+        # Emotion event
+        assert data[1]["event"] == "emotion"
+        assert data[1]["student"] == "Mohammed_Ayman"
+        assert data[1]["mood"] == "Happy"
 
         # Question event
-        assert data[1]["event"] == "question"
-        assert data[1]["student"] == "Mohammed_Ayman"
-        assert data[1]["question"] == "How does the sliding window protocol work?"
-        assert data[1]["topic"] == "Computer Networks"
-        assert data[1]["classification_confidence"] > 0.0
+        assert data[2]["event"] == "question"
+        assert data[2]["student"] == "Mohammed_Ayman"
+        assert data[2]["question"] == "How does the sliding window protocol work?"
+        assert data[2]["topic"] == "Computer Networks"
+        assert data[2]["classification_confidence"] > 0.0
 
         # Student summary (internal state still uses classification_confidence)
         state = attendance.get_student_state("Mohammed_Ayman")

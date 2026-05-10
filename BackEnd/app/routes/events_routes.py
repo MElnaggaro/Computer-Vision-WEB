@@ -57,14 +57,21 @@ async def get_attendance_csv() -> Response:
     writer = csv.writer(output)
     writer.writerow(["No.", "Student Name", "Attendance Status", "Emotion", "Timestamp"])
     
+    # Build a map of student → final emotion from emotion events
+    emotion_map = {}
+    for event in events:
+        if event.get("event") == "emotion":
+            emotion_map[event.get("student", "")] = event.get("mood", "N/A")
+
     count = 1
     for event in events:
         if event.get("event") == "attendance":
+            student = event.get("student", "Unknown")
             writer.writerow([
                 count,
-                event.get("student", "Unknown"),
+                student,
                 event.get("attendance", "Unknown"),
-                event.get("emotion", "N/A"),
+                emotion_map.get(student, "N/A"),
                 event.get("timestamp", "N/A")
             ])
             count += 1
