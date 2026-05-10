@@ -102,6 +102,12 @@ class EncodingManager:
             len(self._encodings),
             len(summary["students"]),
         )
+        print("\n" + "=" * 50)
+        print("Loaded students:")
+        for name in summary["students"].keys():
+            print(f"- {name}")
+        print(f"Total embeddings count: {len(self._encodings)}")
+        print("=" * 50 + "\n")
         return summary
 
     def load_encodings(self) -> bool:

@@ -180,10 +180,7 @@ class ClassroomCamera:
         if self.encoding_manager.is_loaded:
             return True
 
-        if self.encoding_manager.load_encodings():
-            return True
-
-        logger.info("No cached encodings found — building from student images …")
+        logger.info("Building encodings from student images …")
         try:
             summary = self.encoding_manager.build_encodings()
             logger.info("Built encodings: %s", summary)
@@ -303,7 +300,9 @@ class ClassroomCamera:
 
         # 7. Mark attendance for each recognised stable face
         for result in stable_results:
-            if result.get("attendance_ready") and result.get("registered"):
+            track_id = result.get("track_id", -1)
+            emotion_stable = self.emotion_tracker is None or self.emotion_tracker.is_stable(track_id)
+            if result.get("attendance_ready") and result.get("registered") and emotion_stable:
                 self.attendance_service.mark_attendance(
                     name=result["name"],
                     registered=result["registered"],

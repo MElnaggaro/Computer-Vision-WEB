@@ -383,6 +383,13 @@ class Launcher:
         _banner("Smart Classroom Assistant Startup")
 
         # 0. Pre-flight checks
+        log_file = BACKEND_ROOT / "logs" / "classroom_log.json"
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            log_file.write_text("[]", encoding="utf-8")
+        except OSError as exc:
+            _error(f"Could not clear log file at {log_file}: {exc}")
+
         if not FRONTEND_DIR.is_dir():
             _error(f"FrontEnd directory not found at {FRONTEND_DIR}")
             return 1

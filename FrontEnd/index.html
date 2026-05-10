@@ -262,7 +262,7 @@
                         <!-- Controls Bar -->
                         <div class="camera-controls">
                             <button class="dash-btn primary" id="dash-camera-btn" data-cursor="hover">Start Camera</button>
-                            <button class="dash-btn" id="dash-load-attendance-btn" data-cursor="hover">Load Attendance</button>
+                            <button class="dash-btn" id="dash-download-csv-btn" data-cursor="hover">Download CSV</button>
                             <button class="mic-orb" id="dash-mic-orb" data-cursor="hover">
                                 <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                             </button>
@@ -294,6 +294,41 @@
                             <div class="admin-panel-actions">
                                 <button class="dash-btn primary" id="admin-approve-btn" data-cursor="hover" disabled>Approve</button>
                                 <button class="dash-btn" id="admin-reject-btn" data-cursor="hover" disabled>Reject</button>
+                            </div>
+                        </div>
+                        <!-- REGISTRATION MODAL — capture + name only.  -->
+                        <div class="modal-overlay" id="registration-modal">
+                            <div class="modal-panel">
+                                <button class="modal-close" data-cursor="hover">&times;</button>
+                                <div class="step-progress">
+                                    <div class="step-dot active"></div>
+                                    <div class="step-dot"></div>
+                                </div>
+
+                                <!-- STEP 0: Capture -->
+                                <div class="modal-step active">
+                                    <h3 class="modal-title">Register New Student</h3>
+                                    <p class="modal-subtitle">Capture 5–10 face images for recognition training</p>
+                                    <div class="capture-preview">
+                                        <video id="capture-preview-video" autoplay playsinline muted></video>
+                                    </div>
+                                    <p class="capture-count" id="capture-count"><strong>0</strong> / 10 captured</p>
+                                    <div class="modal-actions">
+                                        <button class="dash-btn primary" id="modal-capture-btn" data-cursor="hover">📸 Capture Frame</button>
+                                    </div>
+                                </div>
+
+                                <!-- STEP 1: Name -->
+                                <div class="modal-step">
+                                    <h3 class="modal-title">Enter Student Name</h3>
+                                    <p class="modal-subtitle">Use format: Firstname_Lastname</p>
+                                    <input class="modal-input" id="reg-name-input" type="text" placeholder="Firstname_Lastname" autocomplete="off">
+                                    <p class="input-hint">Letters and underscores only</p>
+                                    <p class="input-error" id="name-error">⚠ Invalid format. Use Firstname_Lastname</p>
+                                    <div class="modal-actions">
+                                        <button class="dash-btn primary" id="name-next-btn" data-cursor="hover">Continue →</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -351,45 +386,7 @@
 
             </section>
 
-            <!-- ══════════════════════════════════════════ -->
-            <!-- REGISTRATION MODAL — capture + name only.  -->
-            <!-- Admin approval is handled by the inline    -->
-            <!-- panel inside the camera card (no modal).   -->
-            <!-- ══════════════════════════════════════════ -->
-            <div class="modal-overlay" id="registration-modal">
-                <div class="modal-panel">
-                    <button class="modal-close" data-cursor="hover">&times;</button>
-                    <div class="step-progress">
-                        <div class="step-dot active"></div>
-                        <div class="step-dot"></div>
-                    </div>
 
-                    <!-- STEP 0: Capture -->
-                    <div class="modal-step active">
-                        <h3 class="modal-title">Register New Student</h3>
-                        <p class="modal-subtitle">Capture 5–10 face images for recognition training</p>
-                        <div class="capture-preview">
-                            <video id="capture-preview-video" autoplay playsinline muted></video>
-                        </div>
-                        <p class="capture-count" id="capture-count"><strong>0</strong> / 10 captured</p>
-                        <div class="modal-actions">
-                            <button class="dash-btn primary" id="modal-capture-btn" data-cursor="hover">📸 Capture Frame</button>
-                        </div>
-                    </div>
-
-                    <!-- STEP 1: Name -->
-                    <div class="modal-step">
-                        <h3 class="modal-title">Enter Student Name</h3>
-                        <p class="modal-subtitle">Use format: Firstname_Lastname</p>
-                        <input class="modal-input" id="reg-name-input" type="text" placeholder="Firstname_Lastname" autocomplete="off">
-                        <p class="input-hint">Letters and underscores only</p>
-                        <p class="input-error" id="name-error">⚠ Invalid format. Use Firstname_Lastname</p>
-                        <div class="modal-actions">
-                            <button class="dash-btn primary" id="name-next-btn" data-cursor="hover">Continue →</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <!-- ══════════════════════════════════════════ -->
             <!-- TOAST NOTIFICATIONS                       -->

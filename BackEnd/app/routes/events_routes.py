@@ -11,10 +11,13 @@ prior events on reconnect or page-load.
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from app.services.logging.log_service import LogService
 
@@ -44,3 +47,36 @@ async def list_events_logs_alias(
 ) -> Dict[str, Any]:
     """Public ``/logs/events`` alias — identical payload to ``/events``."""
     return await list_events(since=since)
+
+@router.get("/logs/attendance-csv")
+async def get_attendance_csv() -> Response:
+    """Download attendance logs as a CSV file."""
+    events = _log_service.load_logs()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["No.", "Student Name", "Attendance Status", "Emotion", "Timestamp"])
+    
+    count = 1
+    for event in events:
+        if event.get("event") == "attendance":
+            writer.writerow([
+                count,
+                event.get("student", "Unknown"),
+                event.get("attendance", "Unknown"),
+                event.get("emotion", "N/A"),
+                event.get("timestamp", "N/A")
+            ])
+            count += 1
+            
+    csv_content = output.getvalue()
+    
+    headers = {
+        "Content-Disposition": "attachment; filename=attendance_log.csv"
+    }
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers=headers
+    )

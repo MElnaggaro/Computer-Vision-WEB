@@ -388,10 +388,11 @@
 
 /* ── Registration Modal ── */
 .modal-overlay {
-    position:fixed; inset:0; background:rgba(3,5,8,.75);
+    position:absolute; inset:0; background:rgba(3,5,8,.75);
     backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
     z-index:8000; display:flex; align-items:center; justify-content:center;
     opacity:0; pointer-events:none; transition:opacity .35s ease;
+    border-radius:20px;
 }
 .modal-overlay.visible { opacity:1; pointer-events:auto; }
 

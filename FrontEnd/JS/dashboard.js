@@ -84,7 +84,7 @@
         cameraWrapper:  $('.camera-feed-wrapper'),
         cameraVideo:    $('#dash-camera-video'),
         cameraBtn:      $('#dash-camera-btn'),
-        loadAttBtn:     $('#dash-load-attendance-btn'),
+        downloadCsvBtn: $('#dash-download-csv-btn'),
         cameraBadge:    $('#camera-badge'),
         offlineMsg:     $('.offline-msg'),
         identityCard:   $('.identity-card'),
@@ -234,15 +234,21 @@
         store.healthTimer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
     }
 
-    // First connect: drop the cursor at the END of the existing log so
-    // pre-existing events do NOT auto-populate the dashboard. The user
-    // can press "Load Attendance" to explicitly replay them.
+    // First connect: auto-populate the dashboard with the existing log history.
     async function seedEventCursor() {
         store.firstEventConnect = false;
         try {
             const data = await api('GET', `${API}/logs/events`);
-            const total = (typeof data.total === 'number') ? data.total : (data.events || []).length;
+            const events = data.events || [];
+            resetDashboardState();
+            events.forEach(processBackendEvent);
+            const total = (typeof data.total === 'number') ? data.total : events.length;
             store.eventCursor = total;
+            toast({
+                kind: 'success',
+                title: 'Attendance loaded',
+                message: `${events.length} event(s) replayed automatically`,
+            });
         } catch (_) {
             store.eventCursor = 0;
         }
@@ -535,12 +541,6 @@
     }
 
     function startPushToTalk() {
-        if (!recognition) {
-            dom.micLabel.textContent = 'Speech not supported';
-            toast({ kind: 'error', title: 'Speech recognition unavailable',
-                    message: 'Try a Chromium-based browser.' });
-            return;
-        }
         if (store.micState !== 'idle') return;
         setMicState('preparing');
         dom.micLabel.textContent = 'Preparing microphone…';
@@ -552,19 +552,45 @@
         }, 50));
         prepareTimers.push(setTimeout(() => store.micState === 'preparing' && showMicCountdown('Speak in', '2'), 1050));
         prepareTimers.push(setTimeout(() => store.micState === 'preparing' && showMicCountdown('Speak in', '1'), 2050));
-        prepareTimers.push(setTimeout(() => {
+        prepareTimers.push(setTimeout(async () => {
             if (store.micState !== 'preparing') return;
             showMicCountdown('Speak now', 'GO', 'go');
-            try {
-                recognition.start();   // onstart will flip state to listening
-                dom.micLabel.textContent = 'Listening…';
-            } catch (e) {
-                console.warn(e);
-                hideMicCountdown();
-                setMicState('idle');
-                dom.micLabel.textContent = 'Ask a Question';
+            dom.micLabel.textContent = 'Listening…';
+            setMicState('listening');
+
+            if (recognition) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.warn(e);
+                    hideMicCountdown();
+                    setMicState('idle');
+                    dom.micLabel.textContent = 'Ask a Question';
+                }
+            } else {
+                // Backend mic mode
+                try {
+                    const studentName = pickStudentForQuestion();
+                    const data = await api('POST', '/interaction/ask-question', {
+                        student: studentName
+                    });
+                    setMicState('processing');
+                    showQuestionOverlay(data.question, data.topic);
+                    dom.micLabel.textContent = `"${data.question}"`;
+                    setMicState('completed');
+                    setTimeout(() => { setMicState('idle'); dom.micLabel.textContent = 'Ask a Question'; }, 3000);
+                } catch (err) {
+                    console.error('Backend mic failed:', err);
+                    let msg = err.message;
+                    if (err.status === 408) msg = 'No speech detected';
+                    else if (err.status === 422) msg = 'Audio not clear';
+                    else if (err.status === 502) msg = 'Network error with speech service';
+                    
+                    toast({ kind: 'error', title: 'Question failed', message: msg || 'Backend error' });
+                    setMicState('idle');
+                    dom.micLabel.textContent = 'Ask a Question';
+                }
             }
-            // Hide the "Speak now" pill shortly after
             prepareTimers.push(setTimeout(hideMicCountdown, 700));
         }, 3050));
     }
@@ -577,9 +603,14 @@
             dom.micLabel.textContent = 'Ask a Question';
             return;
         }
-        if (store.micState === 'listening' && recognition) {
-            try { recognition.stop(); } catch (_) {}
-            // onend will set state to idle if no result arrives
+        if (store.micState === 'listening') {
+            if (recognition) {
+                try { recognition.stop(); } catch (_) {}
+                setMicState('processing'); // Transition to processing as it will trigger onresult if audio was caught
+            } else {
+                // Backend mic mode does not support early stop
+                toast({ kind: 'info', title: 'Processing', message: 'Waiting for server microphone to finish...' });
+            }
         }
     }
 
@@ -783,35 +814,15 @@
     }
 
     // ══════════════════════════════════════
-    // LOAD ATTENDANCE — explicitly replay the entire log
+    // DOWNLOAD CSV
     // ══════════════════════════════════════
-    if (dom.loadAttBtn) {
-        dom.loadAttBtn.addEventListener('click', async () => {
+    if (dom.downloadCsvBtn) {
+        dom.downloadCsvBtn.addEventListener('click', () => {
             if (!store.backendOnline) {
-                toast({ kind: 'error', title: 'Backend offline', message: 'Cannot load attendance.' });
+                toast({ kind: 'error', title: 'Backend offline', message: 'Cannot download CSV.' });
                 return;
             }
-            dom.loadAttBtn.disabled = true;
-            const restore = dom.loadAttBtn.textContent;
-            dom.loadAttBtn.textContent = 'Loading…';
-            try {
-                const data = await api('GET', `${API}/logs/events`);
-                const events = data.events || [];
-                resetDashboardState();
-                events.forEach(processBackendEvent);
-                store.eventCursor = (typeof data.total === 'number') ? data.total : events.length;
-                store.firstEventConnect = false;
-                toast({
-                    kind: 'success',
-                    title: 'Attendance loaded',
-                    message: `${events.length} event(s) replayed`,
-                });
-            } catch (err) {
-                toast({ kind: 'error', title: 'Load failed', message: err.message || 'Unknown error' });
-            } finally {
-                dom.loadAttBtn.textContent = restore;
-                dom.loadAttBtn.disabled = false;
-            }
+            window.location.href = `${API}/logs/attendance-csv`;
         });
     }
 

@@ -91,7 +91,16 @@ async def ask_question(payload: AskQuestionRequest) -> AskQuestionResponse:
         try:
             voice_result = _pipeline.process_voice_question()
         except SpeechError as exc:
-            raise HTTPException(status_code=400, detail=f"Speech failed: {exc}")
+            import app.services.speech.speech_to_text as stt
+            if isinstance(exc, stt.SpeechTimeoutError):
+                raise HTTPException(status_code=408, detail="No speech detected within the time limit.")
+            elif isinstance(exc, stt.SpeechNotUnderstoodError):
+                raise HTTPException(status_code=422, detail="Audio was not clear enough to understand.")
+            elif isinstance(exc, stt.SpeechAPIError):
+                raise HTTPException(status_code=502, detail="Network error: Could not reach speech recognition service.")
+            else:
+                raise HTTPException(status_code=400, detail=f"Speech failed: {exc}")
+                
         if voice_result is None:
             raise HTTPException(
                 status_code=400,

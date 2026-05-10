@@ -109,21 +109,32 @@ class FaceRecognizer:
 
         # Find minimum distance
         min_idx = np.argmin(distances)
-        min_dist = distances[min_idx]
+        min_dist = float(distances[min_idx])
         best_name = known_names[min_idx]
 
-        similarity: float = self._distance_to_similarity(float(min_dist))
+        similarity: float = self._distance_to_similarity(min_dist)
+        accepted = min_dist <= self.tolerance
 
-        if min_dist <= self.tolerance:
+        print("\n" + "-" * 30)
+        print("Detected face")
+        print(f"Best match: {best_name}")
+        print(f"Distance: {min_dist:.2f}")
+        print(f"Threshold: {self.tolerance:.2f}")
+        print(f"Accepted: {'YES' if accepted else 'NO'}")
+        if not accepted:
+            print("Result: Unknown")
+        print("-" * 30 + "\n")
+
+        if accepted:
             return {
                 "name": best_name,
                 "registered": True,
                 "similarity": similarity,
-                "distance": float(min_dist),
+                "distance": min_dist,
                 "location": location,
             }
 
-        return self._unknown_result(location, float(min_dist), similarity)
+        return self._unknown_result(location, min_dist, similarity)
 
     def _distance_to_similarity(self, distance: float) -> float:
         """Convert face distance to an intuitive similarity percentage.

@@ -96,11 +96,11 @@ class VisionSession:
         self._stream_thread: Optional[threading.Thread] = None
         self._stream_running: bool = False
 
-        # Best-effort load on construction so the first frame is fast.
+        # Force rebuild on construction to avoid stale cache.
         try:
-            self.encoding_manager.load_encodings()
+            self.rebuild_encodings()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not preload encodings: %s", exc)
+            logger.warning("Could not build encodings: %s", exc)
 
     # ── Encodings ────────────────────────────────────────────────────
 
@@ -108,10 +108,8 @@ class VisionSession:
         """Make sure encodings are in memory; build them if needed."""
         if self.encoding_manager.is_loaded:
             return True
-        if self.encoding_manager.load_encodings():
-            return True
         try:
-            self.encoding_manager.build_encodings()
+            self.rebuild_encodings()
         except FileNotFoundError as exc:
             logger.error("Encoding build failed: %s", exc)
             return False
