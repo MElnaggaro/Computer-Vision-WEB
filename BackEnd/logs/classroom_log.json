@@ -7,5 +7,15 @@
     "registered": true,
     "emotion": "Sad",
     "emotion_confidence": 0.7249
+  },
+  {
+    "event": "question",
+    "student": "Manual_Test_User",
+    "question": "what is the TCB hand",
+    "topic": "Computer Networks",
+    "classification_confidence": 0.7264,
+    "timestamp": "2026-05-10T04:32:31.570249+00:00",
+    "registered": false,
+    "source": "manual_speech_test"
   }
 ]

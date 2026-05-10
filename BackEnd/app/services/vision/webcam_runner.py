@@ -144,13 +144,18 @@ class ClassroomCamera:
         self.trackers: List[Tuple[Any, Dict[str, Any]]] = []
 
     def _get_question_pipeline(self):
-        """Lazy-load the QuestionPipeline to avoid heavy imports at startup."""
+        """Lazy-load the QuestionPipeline to avoid heavy imports at startup.
+
+        ``log_events=False`` because ``AttendanceService.add_question``
+        already handles question event persistence via :class:`LogService`.
+        """
         if self._question_pipeline is None:
             from app.services.orchestrator.question_pipeline import QuestionPipeline
             self._question_pipeline = QuestionPipeline(
                 language="en-US",
                 timeout=5,
                 phrase_time_limit=10,
+                log_events=False,  # AttendanceService handles logging
             )
         return self._question_pipeline
 
@@ -307,9 +312,8 @@ class ClassroomCamera:
                     emotion_confidence=result.get("emotion_confidence"),
                 )
 
-        # 8. Save log only when attendance changes
-        if getattr(self.attendance_service, "_has_unsaved_changes", False):
-            self.attendance_service.save_log()
+        # 8. (Legacy) Save log is now a no-op since LogService persists immediately
+        self.attendance_service.save_log()
 
         annotated = self._draw_annotations(frame.copy(), stable_results)
         return annotated, stable_results

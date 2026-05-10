@@ -3,6 +3,9 @@ Attendance Service — Event-Based Logging
 ==========================================
 Tracks student attendance and questions using an event-based log system.
 
+All persistence is delegated to :class:`LogService` which maintains a
+single, append-only JSON log at ``BackEnd/logs/classroom_log.json``.
+
 Log format — each entry is a timestamped event::
 
     [
@@ -20,7 +23,7 @@ Log format — each entry is a timestamped event::
         "student": "Mohammed_Ayman",
         "question": "What is a semaphore?",
         "topic": "Operating System",
-        "topic_confidence": 0.87,
+        "classification_confidence": 0.87,
         "timestamp": "2026-05-10T01:41:30+00:00"
       }
     ]
@@ -43,17 +46,18 @@ Design decisions:
     • Per-student state dict with ``questions`` array for queries / overlay.
     • Unknown faces are logged with ``"attendance": "Not Registered"``.
     • Emotion and emotion_confidence are always included when available.
+    • All file I/O is delegated to :class:`LogService` (thread-safe, append-only).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from app.core.config import settings
+from app.services.logging.log_service import LogService
 
 logger = logging.getLogger(__name__)
 
@@ -62,40 +66,42 @@ EventRecord = Dict[str, Any]
 
 
 class AttendanceService:
-    """Mark attendance, record questions, and persist event-based JSON logs."""
+    """Mark attendance, record questions, and persist event-based JSON logs.
+
+    Args:
+        log_file: Override the default log file path.  Passed through to
+                  :class:`LogService`.
+    """
 
     def __init__(
         self,
         log_file: Optional[Path] = None,
     ) -> None:
         self.log_file = log_file or settings.ATTENDANCE_LOG_FILE
+
+        # Shared log service handles all file I/O
+        self._log_service = LogService(log_file=self.log_file)
+
         self._marked: Set[str] = set()                      # student names marked so far
-        self._events: List[EventRecord] = []                 # chronological event log
+        self._events: List[EventRecord] = []                 # chronological event log (session)
         self._student_state: Dict[str, AttendanceRecord] = {}  # per-student state
-        self._has_unsaved_changes: bool = False
 
         # Load students already present in the log file to prevent duplicates across runs
         self._load_existing_students()
 
     def _load_existing_students(self) -> None:
         """Populate the marked set from the existing log file."""
-        if not self.log_file.exists():
-            return
         try:
-            with open(self.log_file, "r", encoding="utf-8") as fh:
-                content = fh.read().strip()
-                if content:
-                    data = json.loads(content)
-                    if isinstance(data, list):
-                        for record in data:
-                            event_type = record.get("event", "attendance")
-                            if event_type == "attendance":
-                                name = record.get("student")
-                                registered = record.get("registered", False)
-                                if name and registered and name != "Unknown":
-                                    self._marked.add(name)
+            existing = self._log_service.load_logs()
+            for record in existing:
+                event_type = record.get("event", "attendance")
+                if event_type == "attendance":
+                    name = record.get("student")
+                    registered = record.get("registered", False)
+                    if name and registered and name != "Unknown":
+                        self._marked.add(name)
             logger.info("Loaded %d previously marked students.", len(self._marked))
-        except (json.JSONDecodeError, IOError) as exc:
+        except Exception as exc:
             logger.warning("Could not pre-load attendance log: %s", exc)
 
     # ── Public API ───────────────────────────────────────────────────
@@ -110,7 +116,8 @@ class AttendanceService:
     ) -> Optional[AttendanceRecord]:
         """Record a student's attendance if not already marked.
 
-        Creates both an event log entry and a per-student state record.
+        Creates both an event log entry (persisted immediately via
+        :class:`LogService`) and a per-student state record.
 
         Args:
             name:               Student name or ``"Unknown"``.
@@ -129,27 +136,25 @@ class AttendanceService:
             return None
 
         timestamp = datetime.now(timezone.utc).isoformat()
+        attendance_status = "Present" if registered else "Not Registered"
 
-        # ── Event log entry ──────────────────────────────────────────
-        event: EventRecord = {
-            "event": "attendance",
-            "student": name,
-            "attendance": "Present" if registered else "Not Registered",
-            "timestamp": timestamp,
-            "registered": registered,
-        }
+        # ── Persist via LogService (append-only, immediate write) ────
+        persisted_event = self._log_service.log_attendance_event(
+            student=name,
+            attendance=attendance_status,
+            registered=registered,
+            emotion=emotion,
+            emotion_confidence=emotion_confidence,
+            timestamp=timestamp,
+        )
 
-        if emotion is not None:
-            event["emotion"] = emotion
-        if emotion_confidence is not None:
-            event["emotion_confidence"] = round(emotion_confidence, 4)
-
-        self._events.append(event)
+        # ── Session-level event cache ────────────────────────────────
+        self._events.append(persisted_event)
 
         # ── Per-student state ────────────────────────────────────────
         student_record: AttendanceRecord = {
             "student": name,
-            "attendance": "Present" if registered else "Not Registered",
+            "attendance": attendance_status,
             "emotion": emotion or "Neutral",
             "emotion_confidence": round(emotion_confidence, 4) if emotion_confidence else 0.0,
             "timestamp": timestamp,
@@ -161,11 +166,10 @@ class AttendanceService:
         if registered:
             self._marked.add(name)
 
-        self._has_unsaved_changes = True
         logger.info(
             "Attendance marked: %s (%s, registered=%s, emotion=%s)",
             name,
-            event["attendance"],
+            attendance_status,
             registered,
             emotion or "N/A",
         )
@@ -177,44 +181,53 @@ class AttendanceService:
         question: str,
         topic: str,
         topic_confidence: float = 0.0,
+        source: Optional[str] = None,
     ) -> Optional[EventRecord]:
         """Record a question asked by a student.
 
-        Creates a question event in the log and appends to the student's
-        ``questions`` array.
+        Creates a question event in the log (persisted immediately via
+        :class:`LogService`) and appends to the student's ``questions``
+        array.
 
         Args:
             student_name:    Name of the student who asked.
             question:        The transcribed question text.
             topic:           NLP-classified topic.
             topic_confidence: Classification confidence (0–1).
+            source:          Origin of the question (e.g.
+                             ``"webcam_push_to_talk"``).
 
         Returns:
             The question event dict, or ``None`` if student is unknown.
         """
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # ── Event log entry ──────────────────────────────────────────
-        event: EventRecord = {
-            "event": "question",
-            "student": student_name,
-            "question": question,
-            "topic": topic,
-            "topic_confidence": round(topic_confidence, 4),
-            "timestamp": timestamp,
-        }
-        self._events.append(event)
+        # Determine registered status
+        registered = student_name in self._marked if student_name != "Unknown" else False
+
+        # ── Persist via LogService (append-only, immediate write) ────
+        persisted_event = self._log_service.log_question_event(
+            student=student_name,
+            question=question,
+            topic=topic,
+            classification_confidence=topic_confidence,
+            registered=registered if student_name != "Unknown" else False,
+            source=source or "webcam_push_to_talk",
+            timestamp=timestamp,
+        )
+
+        # ── Session-level event cache ────────────────────────────────
+        self._events.append(persisted_event)
 
         # ── Update per-student state ─────────────────────────────────
         if student_name in self._student_state:
             self._student_state[student_name]["questions"].append({
                 "question": question,
                 "topic": topic,
-                "topic_confidence": round(topic_confidence, 4),
+                "classification_confidence": round(topic_confidence, 4),
                 "timestamp": timestamp,
             })
 
-        self._has_unsaved_changes = True
         logger.info(
             "Question logged: %s asked '%s' → topic: %s (%.0f%%)",
             student_name,
@@ -223,7 +236,7 @@ class AttendanceService:
             topic_confidence * 100,
         )
         print(f"\nSaved to logs.")
-        return event
+        return persisted_event
 
     def already_marked(self, name: str) -> bool:
         """Return ``True`` if the student was already marked present."""
@@ -253,36 +266,19 @@ class AttendanceService:
         return None
 
     def save_log(self) -> Path:
-        """Persist all events to a JSON log file.
+        """Persist all events to the JSON log file.
+
+        .. note::
+            With the new :class:`LogService` backend, events are written
+            immediately on each ``mark_attendance`` / ``add_question``
+            call.  This method now exists for backward compatibility and
+            is effectively a no-op — the log is already up-to-date.
 
         Returns:
-            The ``Path`` to the written log file.
+            The ``Path`` to the log file.
         """
-        if not self._has_unsaved_changes and self.log_file.exists():
-            return self.log_file
-
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Merge with any existing log entries
-        existing: List[EventRecord] = []
-        if self.log_file.exists():
-            try:
-                with open(self.log_file, "r", encoding="utf-8") as fh:
-                    content = fh.read().strip()
-                    if content:
-                        existing = json.loads(content)
-                        if not isinstance(existing, list):
-                            existing = []
-            except (json.JSONDecodeError, IOError) as exc:
-                logger.warning("Could not read existing log – overwriting: %s", exc)
-
-        combined = existing + self._events
-
-        with open(self.log_file, "w", encoding="utf-8") as fh:
-            json.dump(combined, fh, indent=2, ensure_ascii=False)
-
-        self._has_unsaved_changes = False
-        logger.info("Saved %d events to %s", len(self._events), self.log_file)
+        # LogService already persists on every append_event() call.
+        # Nothing additional to flush.
         return self.log_file
 
     def get_student_summary(self) -> List[AttendanceRecord]:
@@ -313,5 +309,4 @@ class AttendanceService:
         self._marked.clear()
         self._events.clear()
         self._student_state.clear()
-        self._has_unsaved_changes = False
         logger.info("Attendance session reset.")

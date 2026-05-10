@@ -24,6 +24,10 @@ Result format::
         "topic_confidence": 0.87,
         "timestamp": "2026-05-10T01:40:00+00:00"
     }
+
+Event logging:
+    When ``log_events=True`` (the default), every classified question
+    is also appended to the shared classroom log via :class:`LogService`.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ QuestionResult = Dict[str, Any]
 
 
 from app.core.config import settings
+from app.services.logging.log_service import LogService
 
 class QuestionPipeline:
     """End-to-end question processing: microphone → text → topic.
@@ -58,6 +63,11 @@ class QuestionPipeline:
         timeout:            Seconds to wait for speech to begin (default 5).
         phrase_time_limit:  Max seconds for a single utterance (default 10).
         nlp_model_dir:      Path to the directory containing ``nlp_pipeline.joblib``.
+        log_events:         If ``True``, every classified question is appended
+                            to the shared classroom log via :class:`LogService`.
+        student_name:       Name to attribute questions to (default
+                            ``"Unknown"``).
+        source:             Source label for event logging (default ``None``).
     """
 
     def __init__(
@@ -66,6 +76,9 @@ class QuestionPipeline:
         timeout: int = 5,
         phrase_time_limit: int = 10,
         nlp_model_dir: Union[str, Path, None] = None,
+        log_events: bool = True,
+        student_name: str = "Unknown",
+        source: Optional[str] = None,
     ) -> None:
         self.speech_recognizer = SpeechRecognizer(
             language=language,
@@ -73,6 +86,12 @@ class QuestionPipeline:
             phrase_time_limit=phrase_time_limit,
         )
         self.nlp_model_dir = nlp_model_dir or settings.NLP_MODEL_DIR
+
+        # Event logging
+        self._log_events = log_events
+        self._log_service = LogService() if log_events else None
+        self._student_name = student_name
+        self._source = source
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -127,6 +146,19 @@ class QuestionPipeline:
         print(f"\nPredicted topic:\n{topic} ({confidence:.0%})")
         logger.info("Question classified: '%s' -> %s (%.2f)", question_text, topic, confidence)
 
+        # ── Persist question event via LogService ────────────────────
+        if self._log_events and self._log_service is not None:
+            self._log_service.log_question_event(
+                student=self._student_name,
+                question=question_text,
+                topic=topic,
+                classification_confidence=confidence,
+                registered=False if self._student_name in ("Unknown", "Manual_Test_User") else None,
+                source=self._source,
+                timestamp=result["timestamp"],
+            )
+            print(f"\nSaved to logs.")
+
         return result
 
 
@@ -143,7 +175,10 @@ if __name__ == "__main__":
     print("=" * 50)
     print()
 
-    pipeline = QuestionPipeline()
+    pipeline = QuestionPipeline(
+        student_name="Manual_Test_User",
+        source="question_pipeline_cli",
+    )
 
     # Text test first
     print("--- Text-only test ---")
