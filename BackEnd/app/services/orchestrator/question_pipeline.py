@@ -95,12 +95,21 @@ class QuestionPipeline:
 
     # ── Public API ───────────────────────────────────────────────────
 
-    def process_voice_question(self) -> Optional[QuestionResult]:
+    def process_voice_question(
+        self, raise_on_error: bool = True
+    ) -> Optional[QuestionResult]:
         """Record from microphone, transcribe, and classify the topic.
 
+        Args:
+            raise_on_error: When ``True`` (default) any ``SpeechError``
+                is re-raised so callers (e.g. FastAPI routes) can map
+                it to a precise HTTP status code.  Pass ``False`` to
+                preserve the legacy behaviour where errors return
+                ``None`` — useful for CLI scripts.
+
         Returns:
-            A ``QuestionResult`` dict on success, or ``None`` if speech
-            recognition failed (timeout, unclear audio, API error).
+            A ``QuestionResult`` dict on success, or ``None`` when
+            ``raise_on_error=False`` and speech recognition failed.
         """
         logger.info("Starting voice question pipeline …")
 
@@ -109,6 +118,8 @@ class QuestionPipeline:
         except SpeechError as exc:
             logger.warning("Speech recognition failed: %s", exc)
             print(f"\n[ERROR] Speech failed: {exc}")
+            if raise_on_error:
+                raise
             return None
 
         return self._classify(speech_result.text)

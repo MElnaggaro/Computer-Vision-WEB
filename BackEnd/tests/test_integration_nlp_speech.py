@@ -130,8 +130,8 @@ class TestVoicePipeline:
     def test_voice_timeout_returns_none(
         self, mock_ambient, mock_listen, mock_mic, pipeline
     ):
-        """When speech times out, process_voice_question returns None."""
-        result = pipeline.process_voice_question()
+        """When speech times out, process_voice_question returns None in legacy mode."""
+        result = pipeline.process_voice_question(raise_on_error=False)
         assert result is None
 
     @patch("app.services.speech.speech_to_text.sr.Microphone")
@@ -141,8 +141,8 @@ class TestVoicePipeline:
     def test_voice_unclear_returns_none(
         self, mock_ambient, mock_listen, mock_google, mock_mic, pipeline
     ):
-        """When audio is unclear, process_voice_question returns None."""
-        result = pipeline.process_voice_question()
+        """When audio is unclear, process_voice_question returns None in legacy mode."""
+        result = pipeline.process_voice_question(raise_on_error=False)
         assert result is None
 
 

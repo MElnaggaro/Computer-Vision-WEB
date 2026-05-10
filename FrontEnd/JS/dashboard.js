@@ -74,7 +74,10 @@
             inFlight: false,
             adminVisible: false,
         },
+        // Guest mode — when active, guestId is the backend-allocated
+        // Guest_NNN identity that owns the next mic press.
         guestMode: false,
+        guestId: null,
     };
 
     // ══════════════════════════════════════
@@ -154,6 +157,7 @@
     }
     function getInitials(name) {
         if (!name || name === 'Guest' || name === 'Unknown') return '?';
+        if (name.startsWith('Guest_')) return 'G';
         return name.split('_').map(w => w[0]).join('').toUpperCase().slice(0, 2);
     }
     const EMOJIS = {
@@ -354,6 +358,7 @@
         store.cameraActive = false;
         store.currentStudent = null;
         store.guestMode = false;
+        store.guestId = null;
         setStatus(store.backendOnline, store.backendOnline ? 'Backend Online' : 'System Offline');
         if (dom.actionBtns) dom.actionBtns.style.display = 'none';
     }
@@ -445,7 +450,11 @@
         showIdentity(name, attendance, emotion, r.registered, emotionStable, emotionSamples);
 
         if (r.registered) {
+            // A registered face takes over the active mic context; any
+            // prior guest session is dropped so the next mic press is
+            // attributed to the recognised student.
             store.guestMode = false;
+            store.guestId = null;
             store.currentStudent = { name, attendance, emotion, registered: true };
         } else if (!store.guestMode) {
             store.currentStudent = { name: 'Unknown', attendance: 'Unregistered', emotion, registered: false };
@@ -478,8 +487,8 @@
             dom.idEmotion.textContent = emotionDisplay;
             if (dom.actionBtns) dom.actionBtns.style.display = 'none';
         } else if (store.guestMode) {
-            dom.idAvatar.textContent = '?';
-            dom.idName.textContent = 'Guest Visitor';
+            dom.idAvatar.textContent = 'G';
+            dom.idName.textContent = (store.guestId || 'Guest Visitor').replace(/_/g, ' ');
             dom.idAttendance.textContent = 'Guest';
             dom.idAttendance.classList.add('absent');
             dom.idEmotion.textContent = emotionDisplay;
@@ -554,7 +563,7 @@
             }
         };
 
-        recognition.onerror = ev => {
+        recognition.onerror = async ev => {
             console.error('Speech error:', ev.error);
             // Translate browser SpeechRecognition error codes into messages
             // a user can act on.  Never surface raw codes like "network".
@@ -567,6 +576,22 @@
                 'language-not-supported': { title: 'Language unsupported', msg: 'en-US is not available on this device.' },
                 'bad-grammar':     { title: 'Could not understand speech', msg: 'Please rephrase your question.' },
             };
+
+            // Browser speech can't reach Google → try the backend MediaRecorder fallback
+            if (ev.error === 'network' && !ev.__fallbackTried && store.backendOnline) {
+                ev.__fallbackTried = true;
+                hideMicCountdown();
+                clearPrepareTimers();
+                setMicState('processing');
+                dom.micLabel.textContent = 'Falling back to server mic…';
+                try {
+                    await startMediaRecorderFallback();
+                    return;
+                } catch (err) {
+                    console.warn('Backend speech fallback failed:', err);
+                    // fall through to surface a clean error
+                }
+            }
             if (ev.error && ev.error !== 'aborted') {
                 const mapped = SR_ERROR_MAP[ev.error] || { title: 'Microphone error', msg: 'Please try again.' };
                 toast({ kind: 'error', title: mapped.title, message: mapped.msg });
@@ -593,10 +618,107 @@
     }
 
     function pickStudentForQuestion() {
-        if (store.guestMode) return 'Unknown';
+        // Guest mode → use the backend-allocated Guest_NNN id so the
+        // question lands on the right guest in the log.
+        if (store.guestMode && store.guestId) return store.guestId;
         if (store.currentStudent && store.currentStudent.registered) return store.currentStudent.name;
-        return 'Unknown';
+        // Empty signals "let the backend resolve from the active
+        // vision-session identity (last seen face within ~8s)".
+        return '';
     }
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let mediaRecorderStream = null;
+
+    async function startMediaRecorderFallback() {
+        setMicState('listening');
+        dom.micLabel.textContent = 'Listening (Fallback)…';
+        
+        try {
+            mediaRecorderStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(mediaRecorderStream);
+            audioChunks = [];
+            
+            mediaRecorder.addEventListener("dataavailable", event => {
+                audioChunks.push(event.data);
+            });
+            
+            mediaRecorder.addEventListener("stop", async () => {
+                setMicState('processing');
+                dom.micLabel.textContent = 'Processing audio…';
+                mediaRecorderStream.getTracks().forEach(track => track.stop());
+                
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                if (audioBlob.size === 0) {
+                    toast({ kind: 'error', title: 'Audio Error', message: 'Payload empty: frontend bug.' });
+                    setMicState('idle');
+                    dom.micLabel.textContent = 'Ask a Question';
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append("audio", audioBlob, "recording.webm");
+                formData.append("language", "en-US");
+                
+                try {
+                    // Send to the debug endpoint first if you want to inspect, or directly to transcribe-audio
+                    // For now, let's use the debug endpoint to get detailed diagnostics.
+                    // Wait, the debug endpoint doesn't process the question natively. 
+                    // Let's use the transcribe-audio endpoint, but log the exact error if it fails!
+                    
+                    const fetchUrl = `${API_V1}/speech/transcribe-audio`;
+                    const resp = await fetch(fetchUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!resp.ok) {
+                        let detail;
+                        try { detail = (await resp.json()).detail; } catch (_) {}
+                        throw new Error(detail || `Backend returned ${resp.status}`);
+                    }
+                    
+                    const speech = await resp.json();
+                    const transcript = (speech && speech.text) || '';
+                    if (!transcript) {
+                        throw new Error('Empty transcript from server');
+                    }
+                    
+                    const studentName = pickStudentForQuestion();
+                    const data = await api('POST', '/interaction/ask-question', {
+                        student: studentName,
+                        text: transcript,
+                    });
+                    
+                    showQuestionOverlay(data.question, data.topic);
+                    dom.micLabel.textContent = `"${data.question}"`;
+                    setMicState('completed');
+                    setTimeout(() => { setMicState('idle'); dom.micLabel.textContent = 'Ask a Question'; }, 3000);
+                    pollEventsOnce();
+                } catch (err) {
+                    console.error('Backend audio upload failed:', err);
+                    toast({
+                        kind: 'error',
+                        title: 'Backend Speech Error',
+                        message: err.message || 'Unknown backend error'
+                    });
+                    setMicState('idle');
+                    dom.micLabel.textContent = 'Ask a Question';
+                }
+            });
+            
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('Failed to start MediaRecorder:', err);
+            toast({ kind: 'error', title: 'Microphone Error', message: 'Could not access microphone for fallback.' });
+            setMicState('idle');
+            dom.micLabel.textContent = 'Ask a Question';
+        }
+    }
+    
+    // Legacy runBackendSpeechFlow is replaced by startMediaRecorderFallback above.
+    // The previous error map is no longer needed since we surface the exact message.
 
     function clearPrepareTimers() {
         prepareTimers.forEach(clearTimeout);
@@ -649,28 +771,8 @@
                     dom.micLabel.textContent = 'Ask a Question';
                 }
             } else {
-                // Backend mic mode
-                try {
-                    const studentName = pickStudentForQuestion();
-                    const data = await api('POST', '/interaction/ask-question', {
-                        student: studentName
-                    });
-                    setMicState('processing');
-                    showQuestionOverlay(data.question, data.topic);
-                    dom.micLabel.textContent = `"${data.question}"`;
-                    setMicState('completed');
-                    setTimeout(() => { setMicState('idle'); dom.micLabel.textContent = 'Ask a Question'; }, 3000);
-                } catch (err) {
-                    console.error('Backend mic failed:', err);
-                    let msg = err.message;
-                    if (err.status === 408) msg = 'No speech detected';
-                    else if (err.status === 422) msg = 'Audio not clear';
-                    else if (err.status === 502) msg = 'Network error with speech service';
-                    
-                    toast({ kind: 'error', title: 'Question failed', message: msg || 'Backend error' });
-                    setMicState('idle');
-                    dom.micLabel.textContent = 'Ask a Question';
-                }
+                // Backend mic mode (browser has no Web Speech API)
+                await startMediaRecorderFallback();
             }
             prepareTimers.push(setTimeout(hideMicCountdown, 700));
         }, 3050));
@@ -685,11 +787,12 @@
             return;
         }
         if (store.micState === 'listening') {
-            if (recognition) {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            } else if (recognition) {
                 try { recognition.stop(); } catch (_) {}
                 setMicState('processing'); // Transition to processing as it will trigger onresult if audio was caught
             } else {
-                // Backend mic mode does not support early stop
                 toast({ kind: 'info', title: 'Processing', message: 'Waiting for server microphone to finish...' });
             }
         }
@@ -787,18 +890,38 @@
         dom.questionFeed.prepend(card);
     }
 
-    function upsertStudent(name, attendance, emotion) {
-        if (!name || name === 'Guest' || name === 'Unknown') return;
-        if (!store.students[name]) store.students[name] = { attendance, emotion, questions: [] };
-        else {
+    function isTrackable(name) {
+        // Render summaries for registered students AND guests
+        // (Guest_001, Guest_002, …) so the dashboard mirrors what
+        // landed in the log.  "Unknown" / empty names stay filtered.
+        return Boolean(name) && name !== 'Guest' && name !== 'Unknown';
+    }
+
+    function upsertStudent(name, attendance, emotion, isGuest = false) {
+        if (!isTrackable(name)) return;
+        if (!store.students[name]) {
+            store.students[name] = {
+                attendance,
+                emotion,
+                questions: [],
+                isGuest: !!isGuest || name.startsWith('Guest_'),
+            };
+        } else {
             store.students[name].attendance = attendance;
             store.students[name].emotion = emotion;
         }
         renderSummaries();
     }
     function upsertStudentQuestion(student, question, topic) {
-        if (!student || student === 'Guest' || student === 'Unknown') return;
-        if (!store.students[student]) store.students[student] = { attendance: 'Present', emotion: 'Neutral', questions: [] };
+        if (!isTrackable(student)) return;
+        if (!store.students[student]) {
+            store.students[student] = {
+                attendance: student.startsWith('Guest_') ? 'Guest' : 'Present',
+                emotion: 'Neutral',
+                questions: [],
+                isGuest: student.startsWith('Guest_'),
+            };
+        }
         store.students[student].questions.push({ question, topic });
         renderSummaries();
     }
@@ -896,10 +1019,15 @@
         if (!evt || !evt.event) return;
         renderLogCard(evt, dom.logFeed);
         if (evt.event === 'attendance') {
-            if (evt.registered) upsertStudent(evt.student, evt.attendance, evt.emotion || 'Neutral');
+            const isGuest = (evt.student || '').startsWith('Guest_');
+            if (evt.registered) {
+                upsertStudent(evt.student, evt.attendance, evt.emotion || 'Neutral');
+            } else if (isGuest) {
+                upsertStudent(evt.student, evt.attendance || 'Guest', evt.emotion || 'Neutral', true);
+            }
         } else if (evt.event === 'question') {
             addQuestion(evt);
-            if (evt.student && evt.student !== 'Unknown') {
+            if (isTrackable(evt.student)) {
                 upsertStudentQuestion(evt.student, evt.question, evt.topic);
             }
             if (store.cameraActive) showQuestionOverlay(evt.question, evt.topic);
@@ -920,16 +1048,46 @@
     }
 
     // ══════════════════════════════════════
-    // GUEST FLOW
+    // GUEST FLOW — backend allocates a Guest_NNN identity so attendance
+    // and follow-up questions land in the unified log with proper
+    // attribution.
     // ══════════════════════════════════════
     if (dom.guestBtn) {
-        dom.guestBtn.addEventListener('click', () => {
-            store.guestMode = true;
-            store.currentStudent = { name: 'Unknown', attendance: 'Guest', emotion: 'Neutral', registered: false };
-            if (dom.actionBtns) dom.actionBtns.style.display = 'none';
-            dom.idName.textContent = 'Guest Visitor';
-            dom.idAttendance.textContent = 'Guest';
-            toast({ kind: 'info', title: 'Continuing as guest', message: 'Questions are logged without registration.' });
+        dom.guestBtn.addEventListener('click', async () => {
+            if (!store.backendOnline) {
+                toast({ kind: 'error', title: 'Backend offline', message: 'Cannot start guest session.' });
+                return;
+            }
+            try {
+                const data = await api('POST', '/interaction/guest-session');
+                store.guestMode = true;
+                store.guestId = data.student;
+                store.currentStudent = {
+                    name: data.student,
+                    attendance: 'Guest',
+                    emotion: 'Neutral',
+                    registered: false,
+                    isGuest: true,
+                };
+                if (dom.actionBtns) dom.actionBtns.style.display = 'none';
+                if (dom.idAvatar) dom.idAvatar.textContent = 'G';
+                if (dom.idName) dom.idName.textContent = data.student.replace(/_/g, ' ');
+                if (dom.idAttendance) {
+                    dom.idAttendance.textContent = 'Guest';
+                    dom.idAttendance.classList.add('absent');
+                }
+                toast({
+                    kind: 'info',
+                    title: `Continuing as ${data.student.replace(/_/g, ' ')}`,
+                    message: 'Questions are logged with this guest identity.',
+                });
+                // Pull the freshly-logged guest attendance event so the
+                // live feed and summary update immediately.
+                pollEventsOnce();
+            } catch (err) {
+                console.error('guest session failed:', err);
+                toast({ kind: 'error', title: 'Could not start guest session', message: err.message || 'Backend error' });
+            }
         });
     }
 

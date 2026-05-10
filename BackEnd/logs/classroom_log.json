@@ -4,6 +4,16 @@
     "student": "Mohammed_Ayman",
     "attendance": "Present",
     "registered": true,
-    "timestamp": "2026-05-10T15:15:56.716170+00:00"
+    "timestamp": "2026-05-10T16:04:05.677179+00:00"
+  },
+  {
+    "event": "question",
+    "student": "Mohammed_Ayman",
+    "question": "What is the TCB handshake?",
+    "topic": "Computer Networks",
+    "classification_confidence": 0.6889,
+    "timestamp": "2026-05-10T16:04:38.325502+00:00",
+    "registered": true,
+    "source": "interaction_ask_question"
   }
 ]

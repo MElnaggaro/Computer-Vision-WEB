@@ -30,7 +30,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -76,6 +76,12 @@ class VisionSession:
     # Minimum IoU required to reuse a locked identity for a detection.
     IDENTITY_LOCK_IOU: float = 0.35
 
+    # ── Active-student session tracking ────────────────────────────
+    # When a question is asked without an explicit student name, the
+    # backend attributes it to the person whose face was last seen
+    # within this many seconds.  Configurable via ACTIVE_STUDENT_TTL_S.
+    ACTIVE_STUDENT_TTL_SECONDS: float = 8.0
+
     def __init__(self, enable_emotion: bool = False) -> None:
         # ── 1. Static configuration ──────────────────────────────────
         self.enable_emotion = enable_emotion
@@ -107,6 +113,17 @@ class VisionSession:
         self._latest_frame: Optional[np.ndarray] = None
         self._stream_thread: Optional[threading.Thread] = None
         self._stream_running: bool = False
+
+        # ── 4b. Active-student session ──────────────────────────────
+        # Tracks the most recent person attached to the live mic/camera
+        # context.  Updated by ``recognize_frame`` whenever a registered
+        # face is seen, and by ``set_active_guest`` when the user clicks
+        # "Continue as Guest".  ``ask-question`` consults this so a
+        # question recorded while X is on screen is attributed to X.
+        self._active_student: Optional[str] = None
+        self._active_student_registered: bool = False
+        self._active_student_seen_at: float = 0.0
+        self._active_lock = threading.Lock()
 
         # ── 5. Fresh session: clear stale log from previous runs ─────
         # Each server start = clean session.  Prevents stale attendance
@@ -303,6 +320,28 @@ class VisionSession:
         # ── Stage 4: Track identities ────────────────────────────────
         stable_results = self.face_tracker.update(raw_results)
         t4 = time.perf_counter()
+
+        # ── Stage 4b: Refresh active-student session ────────────────
+        # Use the largest registered + stable face as the current
+        # "owner" of the mic/camera.  If the active student is a guest
+        # (registered=False, name starts with Guest_), keep them pinned
+        # — recognising the user's own face shouldn't kick a guest out
+        # mid-question, but a registered face WILL take over.
+        best_registered = None
+        best_area = 0
+        for r in stable_results:
+            if not r.get("registered"):
+                continue
+            loc = r.get("location")
+            if not loc:
+                continue
+            top, right, bottom, left = loc
+            area = max(0, (bottom - top) * (right - left))
+            if area > best_area and r.get("stable"):
+                best_area = area
+                best_registered = r
+        if best_registered is not None:
+            self.set_active_student(best_registered["name"], registered=True)
 
         # ── Stage 3: Attendance — fires IMMEDIATELY, no emotion gate ─
         # Attendance is logged as soon as identity is stable + confirmed.
@@ -522,10 +561,80 @@ class VisionSession:
         self.face_tracker.reset()
         if self.emotion_tracker is not None:
             self.emotion_tracker.reset()
+        self.clear_active_student()
 
-    def get_active_student(self) -> Optional[str]:
-        """Return the currently-recognised student, if any."""
-        return self.attendance_service.get_active_student()
+    def get_active_student(
+        self, ttl_seconds: Optional[float] = None
+    ) -> Optional[str]:
+        """Return the student/guest who owns the current mic context.
+
+        The active student is whoever was last seen on camera *or* the
+        guest the user explicitly chose to continue as.  Returns
+        ``None`` when no one has been seen within the TTL window so the
+        caller can decide between attributing to ``Unknown`` or
+        rejecting the request.
+
+        Args:
+            ttl_seconds: Override the default
+                :attr:`ACTIVE_STUDENT_TTL_SECONDS` window.
+        """
+        ttl = self.ACTIVE_STUDENT_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+        with self._active_lock:
+            if not self._active_student:
+                return None
+            if (time.monotonic() - self._active_student_seen_at) > ttl:
+                return None
+            return self._active_student
+
+    def get_active_student_info(
+        self, ttl_seconds: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """Return the current active student name + registered flag.
+
+        Equivalent to :meth:`get_active_student` but returns the
+        ``registered`` flag too so the caller can build a question
+        event without a second lookup.
+        """
+        ttl = self.ACTIVE_STUDENT_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+        with self._active_lock:
+            if not self._active_student:
+                return {"name": None, "registered": False, "fresh": False}
+            fresh = (time.monotonic() - self._active_student_seen_at) <= ttl
+            return {
+                "name": self._active_student if fresh else None,
+                "registered": self._active_student_registered if fresh else False,
+                "fresh": fresh,
+            }
+
+    def set_active_student(self, name: str, registered: bool) -> None:
+        """Manually pin the active student (used by the guest flow).
+
+        Args:
+            name:        Either a registered student name or ``Guest_NNN``.
+            registered:  ``True`` for known students, ``False`` for guests.
+        """
+        with self._active_lock:
+            self._active_student = name
+            self._active_student_registered = bool(registered)
+            self._active_student_seen_at = time.monotonic()
+        logger.info("Active student set → %s (registered=%s)", name, registered)
+
+    def clear_active_student(self) -> None:
+        with self._active_lock:
+            self._active_student = None
+            self._active_student_registered = False
+            self._active_student_seen_at = 0.0
+
+    def register_guest(self) -> Dict[str, Any]:
+        """Allocate a new ``Guest_NNN`` identity, log it, and pin it as active.
+
+        This is the backend half of the "Continue as Guest" button.
+        Returns the persisted student record so the route can hand it
+        back to the frontend.
+        """
+        record = self.attendance_service.register_guest()
+        self.set_active_student(record["student"], registered=False)
+        return record
 
     def get_summaries(self) -> List[Dict[str, Any]]:
         """Return per-student summaries for the frontend."""
