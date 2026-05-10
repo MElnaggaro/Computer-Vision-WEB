@@ -103,19 +103,20 @@ def _build_camera_with_mocked_encodings(
     seeds: List[int],
 ) -> ClassroomCamera:
     """Create a ClassroomCamera wired to a fake encoding cache."""
-    cache_file = tmp_path / "encodings.pkl"
-    data = {
-        "names": names,
-        "encodings": [_make_fake_encoding(seed=s) for s in seeds],
-    }
-    with open(cache_file, "wb") as fh:
-        pickle.dump(data, fh)
-
+    students_dir = tmp_path / "students"
+    students_dir.mkdir(parents=True, exist_ok=True)
+    
     manager = EncodingManager(
-        students_dir=tmp_path / "students",
-        encodings_file=cache_file,
+        students_dir=students_dir,
+        encodings_dir=tmp_path / "encodings",
     )
-    manager.load_encodings()
+    
+    # Manually inject mock encodings into the manager's memory
+    for name, seed in zip(names, seeds):
+        enc = _make_fake_encoding(seed)
+        manager._mean_names.append(name)
+        manager._mean_encodings.append(enc)
+        manager._detailed_cache[name] = [enc]
 
     attendance = AttendanceService(log_file=tmp_path / "test_log.json")
 

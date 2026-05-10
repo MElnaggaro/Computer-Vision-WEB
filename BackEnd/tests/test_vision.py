@@ -81,18 +81,31 @@ class TestDecodeBase64Frame:
 
 class TestEncodingManager:
     def test_save_and_load_roundtrip(self, tmp_path):
-        cache = tmp_path / "encodings.pkl"
+        encodings_dir = tmp_path / "encodings"
+        encodings_dir.mkdir(parents=True, exist_ok=True)
         students_dir = tmp_path / "students"
-        students_dir.mkdir()
+        students_dir.mkdir(parents=True, exist_ok=True)
+        (students_dir / "Alice_Smith").mkdir()
+        (students_dir / "Bob_Jones").mkdir()
 
-        mgr = EncodingManager(students_dir=students_dir, encodings_file=cache)
-        # Inject fake encodings directly to bypass dlib
-        mgr._names = ["Alice_Smith", "Bob_Jones"]
-        mgr._encodings = [np.zeros(128, dtype=np.float32), np.ones(128, dtype=np.float32)]
-        mgr._save_cache()
+        mgr = EncodingManager(students_dir=students_dir, encodings_dir=encodings_dir)
+        mgr._mean_names = ["Alice_Smith", "Bob_Jones"]
+        mgr._mean_encodings = [np.zeros(128, dtype=np.float32), np.ones(128, dtype=np.float32)]
+        mgr._detailed_cache = {
+            "Alice_Smith": [np.zeros(128, dtype=np.float32)],
+            "Bob_Jones": [np.ones(128, dtype=np.float32)]
+        }
+        
+        # Fake save
+        mgr._save_manifest({"students": {
+            "Alice_Smith": {"encoding_file": "Alice_Smith.pkl", "folder_fingerprint": ""},
+            "Bob_Jones": {"encoding_file": "Bob_Jones.pkl", "folder_fingerprint": ""}
+        }})
+        mgr._save_student_pickle("Alice_Smith", mgr._detailed_cache["Alice_Smith"], mgr._mean_encodings[0])
+        mgr._save_student_pickle("Bob_Jones", mgr._detailed_cache["Bob_Jones"], mgr._mean_encodings[1])
 
         # Fresh instance — should load from disk
-        mgr2 = EncodingManager(students_dir=students_dir, encodings_file=cache)
+        mgr2 = EncodingManager(students_dir=students_dir, encodings_dir=encodings_dir)
         loaded = mgr2.load_encodings()
         assert loaded is True
         assert mgr2.is_loaded
@@ -102,7 +115,7 @@ class TestEncodingManager:
     def test_load_missing_returns_false(self, tmp_path):
         mgr = EncodingManager(
             students_dir=tmp_path / "absent",
-            encodings_file=tmp_path / "missing.pkl",
+            encodings_dir=tmp_path / "missing",
         )
         assert mgr.load_encodings() is False
         assert not mgr.is_loaded
@@ -114,8 +127,8 @@ class TestEncodingManager:
 class TestFaceRecognizer:
     def test_unknown_when_no_encodings(self):
         mgr = EncodingManager()
-        mgr._names = []
-        mgr._encodings = []
+        mgr._mean_names = []
+        mgr._mean_encodings = []
         rec = FaceRecognizer(encoding_manager=mgr, tolerance=0.6)
         result = rec._match_encoding(np.zeros(128, dtype=np.float32), (0, 10, 10, 0))
         assert result["registered"] is False
@@ -124,8 +137,8 @@ class TestFaceRecognizer:
     def test_known_when_within_tolerance(self):
         mgr = EncodingManager()
         target = np.zeros(128, dtype=np.float32)
-        mgr._names = ["Alice_Smith"]
-        mgr._encodings = [target]
+        mgr._mean_names = ["Alice_Smith"]
+        mgr._mean_encodings = [target]
         rec = FaceRecognizer(encoding_manager=mgr, tolerance=0.6)
 
         with patch(
@@ -139,8 +152,8 @@ class TestFaceRecognizer:
 
     def test_unknown_when_distance_above_tolerance(self):
         mgr = EncodingManager()
-        mgr._names = ["Alice_Smith"]
-        mgr._encodings = [np.zeros(128, dtype=np.float32)]
+        mgr._mean_names = ["Alice_Smith"]
+        mgr._mean_encodings = [np.zeros(128, dtype=np.float32)]
         rec = FaceRecognizer(encoding_manager=mgr, tolerance=0.45)
 
         with patch(

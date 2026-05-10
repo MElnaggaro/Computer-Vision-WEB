@@ -74,19 +74,17 @@ def _build_camera(
     enable_emotion: bool = True,
 ) -> ClassroomCamera:
     """Wire a ClassroomCamera with fake encodings and a controllable emotion tracker."""
-    cache_file = tmp_path / "encodings.pkl"
-    data = {
-        "names": names,
-        "encodings": [_make_fake_encoding(seed=s) for s in seeds],
-    }
-    with open(cache_file, "wb") as fh:
-        pickle.dump(data, fh)
-
-    manager = EncodingManager(
-        students_dir=tmp_path / "students",
-        encodings_file=cache_file,
-    )
-    manager.load_encodings()
+    students_dir = tmp_path / "students"
+    students_dir.mkdir(parents=True, exist_ok=True)
+    
+    manager = EncodingManager(students_dir=students_dir, encodings_dir=tmp_path / "encodings")
+    
+    # Manually inject mock encodings into the manager's memory
+    for name, seed in zip(names, seeds):
+        enc = _make_fake_encoding(seed)
+        manager._mean_names.append(name)
+        manager._mean_encodings.append(enc)
+        manager._detailed_cache[name] = [enc]
 
     attendance = AttendanceService(log_file=tmp_path / "test_log.json")
     emotion_tracker = _make_mock_emotion_tracker(emotion_label, emotion_confidence) if enable_emotion else None
@@ -171,7 +169,7 @@ class TestKnownStudentWithEmotion:
         assert record["student"] == "Catherine_Adel"
         assert record["attendance"] == "Present"
         assert record["registered"] is True
-        assert "emotion" in record
+        assert record["emotion"] == "Neutral"
         assert "emotion_confidence" in record
         assert "timestamp" in record
 
@@ -363,7 +361,7 @@ class TestLogSchemaWithEmotion:
         )
 
         assert record is not None
-        assert record["emotion"] == "Neutral"
+        assert record["emotion"] == "Analyzing..."
         assert record["emotion_confidence"] == 0.0
 
     def test_attendance_service_unknown_face_log(self, tmp_path: Path) -> None:

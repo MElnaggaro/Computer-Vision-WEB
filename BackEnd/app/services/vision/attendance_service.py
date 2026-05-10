@@ -161,6 +161,8 @@ class AttendanceService:
             student=name,
             attendance=attendance_status,
             registered=registered,
+            emotion=emotion,
+            emotion_confidence=emotion_confidence,
             timestamp=timestamp,
         )
 
@@ -171,8 +173,8 @@ class AttendanceService:
         student_record: AttendanceRecord = {
             "student": name,
             "attendance": attendance_status,
-            "emotion": "Analyzing...",
-            "emotion_confidence": 0.0,
+            "emotion": emotion if emotion is not None else "Analyzing...",
+            "emotion_confidence": emotion_confidence if emotion_confidence is not None else 0.0,
             "timestamp": timestamp,
             "registered": registered,
             "questions": [],
