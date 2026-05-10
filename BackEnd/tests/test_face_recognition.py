@@ -99,8 +99,11 @@ class TestFaceRecognizer:
     ) -> FaceRecognizer:
         """Create a recognizer with a pre‑populated encoding manager."""
         manager = EncodingManager.__new__(EncodingManager)
-        manager._names = names
-        manager._encodings = encodings
+        manager._mean_names = names
+        manager._mean_encodings = encodings
+        manager._detailed_cache = {n: [e] for n, e in zip(names, encodings)}
+        manager.encodings_dir = Path("dummy")
+        manager.manifest_file = manager.encodings_dir / "manifest.json"
         return FaceRecognizer(encoding_manager=manager, tolerance=tolerance)
 
     @patch("app.services.vision.face_recognizer.fr_lib")
@@ -170,8 +173,10 @@ class TestFaceRecognizer:
         mock_fr.face_encodings.return_value = [known_frame_enc, unknown_frame_enc]
 
         mock_fr.face_distance.side_effect = [
-            np.array([0.1, 0.7]),    # matches Student_A
-            np.array([0.9, 0.85]),   # matches neither
+            np.array([0.1, 0.7]),    # Phase 1 for Face 1 -> matches Student_A
+            np.array([0.1]),         # Phase 2 for Face 1 -> Detailed verify Student_A
+            np.array([0.9, 0.85]),   # Phase 1 for Face 2 -> matches neither
+            # Face 2 never reaches Phase 2 because it's rejected in Phase 1
         ]
 
         results = recognizer.recognize_faces(frame, locations)
@@ -226,7 +231,7 @@ class TestInvalidInput:
 
         manager = EncodingManager(
             students_dir=tmp_path / "students",
-            encodings_file=tmp_path / "enc.pkl",
+            encodings_dir=tmp_path / "encodings",
         )
         summary = manager.build_encodings()
 
@@ -238,10 +243,10 @@ class TestInvalidInput:
         """EncodingManager should raise FileNotFoundError for missing dir."""
         manager = EncodingManager(
             students_dir=tmp_path / "does_not_exist",
-            encodings_file=tmp_path / "enc.pkl",
+            encodings_dir=tmp_path / "encodings",
         )
-        with pytest.raises(FileNotFoundError):
-            manager.build_encodings()
+        summary = manager.build_encodings()
+        assert summary["status"] == "no_dataset"
 
     def test_encoding_manager_empty_student_dir(self, tmp_path: Path) -> None:
         """EncodingManager should handle an empty students directory."""
@@ -250,7 +255,7 @@ class TestInvalidInput:
 
         manager = EncodingManager(
             students_dir=students_dir,
-            encodings_file=tmp_path / "enc.pkl",
+            encodings_dir=tmp_path / "encodings",
         )
         summary = manager.build_encodings()
 
@@ -264,7 +269,7 @@ class TestInvalidInput:
 
         manager = EncodingManager(
             students_dir=tmp_path / "students",
-            encodings_file=cache_file,
+            encodings_dir=tmp_path / "encodings",
         )
         loaded = manager.load_encodings()
 
@@ -272,18 +277,42 @@ class TestInvalidInput:
         assert manager.is_loaded is False
 
     def test_encoding_manager_load_valid_cache(self, tmp_path: Path) -> None:
-        """EncodingManager should successfully load a valid pickle cache."""
-        cache_file = tmp_path / "good_cache.pkl"
+        """EncodingManager should successfully load a valid cache via manifest."""
+        import json
+        encodings_dir = tmp_path / "encodings"
+        encodings_dir.mkdir()
+        students_dir = tmp_path / "students"
+        students_dir.mkdir()
+        (students_dir / "Test_Student").mkdir()
+        
+        cache_file = encodings_dir / "Test_Student.pkl"
+        manifest_file = encodings_dir / "manifest.json"
+        
+        # Write pickle
         data = {
-            "names": ["Test_Student"],
+            "student_name": "Test_Student",
             "encodings": [_make_fake_encoding(seed=7)],
+            "mean_encoding": _make_fake_encoding(seed=7)
         }
         with open(cache_file, "wb") as fh:
             pickle.dump(data, fh)
+            
+        # Write manifest
+        manifest_data = {
+            "students": {
+                "Test_Student": {
+                    "folder_fingerprint": "",
+                    "encoding_file": "Test_Student.pkl",
+                    "num_images": 1
+                }
+            }
+        }
+        with open(manifest_file, "w") as fh:
+            json.dump(manifest_data, fh)
 
         manager = EncodingManager(
             students_dir=tmp_path / "students",
-            encodings_file=cache_file,
+            encodings_dir=encodings_dir,
         )
         loaded = manager.load_encodings()
 

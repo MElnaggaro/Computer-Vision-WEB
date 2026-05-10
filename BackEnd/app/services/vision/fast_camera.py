@@ -107,49 +107,43 @@ class FastMatcher:
     # ── Loading / rebuilding ─────────────────────────────────────────
 
     def load(self) -> bool:
-        """Load encodings from the ``.pkl`` cache into the matrix."""
-        if not self.encodings_file.exists():
-            logger.warning("Encoding cache missing: %s", self.encodings_file)
-            return False
+        """Load encodings from the incremental cache into the matrix."""
+        from app.services.vision.encoding_manager import EncodingManager
 
-        try:
-            with open(self.encodings_file, "rb") as fh:
-                data = pickle.load(fh)
-            names = list(data.get("names", []))
-            encodings = data.get("encodings", [])
-        except (pickle.UnpicklingError, EOFError, KeyError, ModuleNotFoundError) as exc:
-            logger.error("Failed to load encoding cache: %s", exc)
-            return False
+        mgr = EncodingManager()
+        # Loading encodings handles incremental rebuilds cleanly.
+        mgr.ensure_fresh()
 
-        if not encodings:
+        if not mgr.is_loaded:
             logger.warning("Encoding cache is empty.")
             self.matrix = None
             self.names = []
             self._student_index = {}
+            self.mgr = None
             return False
 
-        self.matrix = np.stack([np.asarray(e, dtype=np.float64) for e in encodings])
-        self.names = names
+        self.mgr = mgr
+        self.matrix = np.stack(mgr.encodings)
+        self.names = mgr.names
 
-        # student -> [indices] grouping (FIX 2: smarter per-student lookup)
         self._student_index.clear()
-        for idx, name in enumerate(names):
+        for idx, name in enumerate(self.names):
             self._student_index.setdefault(name, []).append(idx)
 
         logger.info(
-            "FastMatcher loaded: %d encodings across %d students.",
+            "FastMatcher loaded: %d representative encodings across %d students.",
             len(self.names),
             len(self._student_index),
         )
         return True
 
     def rebuild_from_disk(self) -> bool:
-        """Force-rebuild the cache from ``data/students_faces/`` and reload."""
+        """Force-rebuild the cache and reload."""
         from app.services.vision.encoding_manager import EncodingManager
 
-        mgr = EncodingManager(encodings_file=self.encodings_file)
+        mgr = EncodingManager()
         try:
-            summary = mgr.build_encodings()
+            summary = mgr.rebuild_all_encodings()
         except FileNotFoundError as exc:
             logger.error("Cannot rebuild — %s", exc)
             return False
@@ -170,22 +164,33 @@ class FastMatcher:
     def match(self, encoding: np.ndarray) -> Tuple[str, float, float]:
         """Return ``(name, similarity, distance)`` for one encoding.
 
-        Uses a single vectorized L2 distance over all known encodings,
-        then picks the minimum.  ``similarity`` is a 0–1 score derived
-        from the distance for display purposes.
+        Uses a single vectorized L2 distance over representative encodings,
+        then picks the minimum. If it passes the threshold, optionally
+        verifies against detailed encodings.
         """
         if not self.is_loaded or self.matrix is None:
             return "Unknown", 0.0, 1.0
 
+        # PHASE 1: Fast Match
         # Single BLAS call: (N, 128) - (128,) → (N, 128) → norm → (N,)
         diff = self.matrix - encoding
         distances = np.linalg.norm(diff, axis=1)
 
         idx = int(np.argmin(distances))
         d = float(distances[idx])
+        best_name = self.names[idx]
 
         if d <= self.tolerance:
-            return self.names[idx], self._sim(d), d
+            # PHASE 2: Detailed Verification
+            if getattr(self, "mgr", None):
+                detailed_encs = self.mgr.get_detailed_encodings_for(best_name)
+                if detailed_encs:
+                    det_distances = np.linalg.norm(np.array(detailed_encs) - encoding, axis=1)
+                    d = min(d, float(np.min(det_distances)))
+
+            if d <= self.tolerance:
+                return best_name, self._sim(d), d
+
         return "Unknown", self._sim(d), d
 
     def _sim(self, distance: float) -> float:

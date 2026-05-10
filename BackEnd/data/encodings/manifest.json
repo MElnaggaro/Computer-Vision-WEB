@@ -1,0 +1,34 @@
+{
+  "students": {
+    "Catherine_Adel": {
+      "folder_fingerprint": "590a04c1184a9ff39dbdc1f969dea3527014fe38",
+      "encoding_file": "Catherine_Adel.pkl",
+      "num_images": 14,
+      "last_updated": 1778430332
+    },
+    "Menna_Abdo": {
+      "folder_fingerprint": "2cf0e0747595b0637de3efd0083e46af8ce672eb",
+      "encoding_file": "Menna_Abdo.pkl",
+      "num_images": 8,
+      "last_updated": 1778430346
+    },
+    "Mohammed_Ayman": {
+      "folder_fingerprint": "588ac949ebbc489323660c61fe1c689def59549f",
+      "encoding_file": "Mohammed_Ayman.pkl",
+      "num_images": 9,
+      "last_updated": 1778430361
+    },
+    "Noreen_Osama": {
+      "folder_fingerprint": "5e3621ed87e59557349816f7b6d82c97e0058bda",
+      "encoding_file": "Noreen_Osama.pkl",
+      "num_images": 11,
+      "last_updated": 1778430384
+    },
+    "Rewan_Mosad": {
+      "folder_fingerprint": "fe68a8ce75c7bef63431b229466610835755fa20",
+      "encoding_file": "Rewan_Mosad.pkl",
+      "num_images": 7,
+      "last_updated": 1778430394
+    }
+  }
+}

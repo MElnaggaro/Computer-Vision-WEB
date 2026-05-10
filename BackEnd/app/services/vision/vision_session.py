@@ -168,39 +168,10 @@ class VisionSession:
         return self.encoding_manager.is_loaded
 
     def rebuild_encodings(self) -> Dict[str, Any]:
-        """Force a full rebuild of the face-encoding cache.
+        """Force a full rebuild of the face-encoding cache."""
+        summary = self.encoding_manager.rebuild_all_encodings()
 
-        Defensive sequence:
-            1. Clear any in-memory encodings.
-            2. Rebuild from the filesystem (``data/students_faces/``) only.
-               ``build_encodings`` writes the new ``.pkl`` ATOMICALLY
-               (tmp file + ``os.replace``), so the cache is *never*
-               missing — even if the Python process is killed
-               mid-rebuild.  A new fingerprint enforces correctness, so
-               there is no need to ``unlink`` the previous cache: the
-               filesystem-as-source-of-truth invariant comes from
-               ``build_encodings`` scanning ``students_faces`` directly,
-               not from preemptive deletion.
-            3. Reset the per-track history so newly added students don't
-               inherit any prior stability counters.
-        """
-        # 1 — wipe in-memory state.  We deliberately do NOT delete the
-        # on-disk cache here.  Doing so was the root cause of the
-        # "cache disappears between runs" bug: any registration approval
-        # or aborted rebuild left the .pkl missing, forcing a 30-85 s
-        # rebuild on the next startup.
-        try:
-            self.encoding_manager._names.clear()  # type: ignore[attr-defined]
-            self.encoding_manager._encodings.clear()  # type: ignore[attr-defined]
-        except AttributeError:
-            pass
-
-        # 2 — rebuild from the live filesystem (atomic write inside).
-        summary = self.encoding_manager.build_encodings()
-        # Reload in-memory cache so subsequent recognitions see new students
-        self.encoding_manager.load_encodings()
-
-        # 4 — reset trackers so newly added faces get fresh stability counters
+        # reset trackers so newly added faces get fresh stability counters
         self.face_tracker.reset()
         if self.emotion_tracker is not None:
             self.emotion_tracker.reset()

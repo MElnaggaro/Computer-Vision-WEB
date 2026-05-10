@@ -4,6 +4,16 @@
     "student": "Mohammed_Ayman",
     "attendance": "Present",
     "registered": true,
-    "timestamp": "2026-05-10T16:14:39.081731+00:00"
+    "timestamp": "2026-05-10T16:27:40.407897+00:00"
+  },
+  {
+    "event": "question",
+    "student": "Mohammed_Ayman",
+    "question": "What is the TCB server?",
+    "topic": "Computer Networks",
+    "classification_confidence": 0.8738,
+    "timestamp": "2026-05-10T16:27:54.568207+00:00",
+    "registered": true,
+    "source": "interaction_ask_question"
   }
 ]
