@@ -177,6 +177,33 @@ class LogService:
 
         return self.append_event(event)
 
+    def log_emotion_event(
+        self,
+        student: str,
+        mood: str,
+        registered: bool,
+        samples: int,
+        timestamp: Optional[str] = None,
+    ) -> EventRecord:
+        """Build and append an ``emotion`` event.
+
+        Args:
+            student:    Student name.
+            mood:       The final smoothed emotion label.
+            registered: Whether the student is registered.
+            samples:    Number of predictions in the smoothing window.
+            timestamp:  ISO timestamp override.
+        """
+        event: EventRecord = {
+            "event": "emotion",
+            "student": student,
+            "mood": mood,
+            "registered": registered,
+            "samples": samples,
+            "timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
+        }
+        return self.append_event(event)
+
     def log_registration_event(
         self,
         student: str,

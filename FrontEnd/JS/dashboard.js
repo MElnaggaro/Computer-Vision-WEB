@@ -443,7 +443,7 @@
 
         const r = best.r;
         const name = r.registered ? r.name : 'Unknown';
-        const emotion = r.emotion || 'Neutral';
+        const emotion = r.emotion || null;
         const attendance = r.registered ? 'Present' : 'Unregistered';
         const emotionStable = !!r.emotion_stable;
         const emotionSamples = r.emotion_samples || 0;
@@ -473,11 +473,15 @@
     function showIdentity(name, attendance, emotion, registered, emotionStable, emotionSamples) {
         if (!dom.identityCard) return;
         // Determine what to show for emotion:
-        //   - If emotion averaging is NOT done yet → show "Detecting emotion..."
+        //   - If emotion is null/not ready → show "Analyzing..."
+        //   - If emotion averaging is NOT done yet → show progress
         //   - If emotion averaging IS done → show the final averaged label
-        const emotionDisplay = (emotionStable)
-            ? emotionStr(emotion)
-            : `⏳ Detecting emotion... (${emotionSamples || 0}/5)`;
+        let emotionDisplay;
+        if (!emotion || !emotionStable) {
+            emotionDisplay = `⏳ Analyzing... (${emotionSamples || 0}/5)`;
+        } else {
+            emotionDisplay = emotionStr(emotion);
+        }
 
         if (registered) {
             dom.idAvatar.textContent = getInitials(name);
@@ -839,6 +843,7 @@
         let iconClass, emoji, label;
         switch (data.event) {
             case 'attendance':              iconClass='attendance'; emoji='🟢'; label='Attendance'; break;
+            case 'emotion':                 iconClass='attendance'; emoji='🧠'; label='Emotion';    break;
             case 'question':                iconClass='question';   emoji='🔵'; label='Question';   break;
             case 'guest':                   iconClass='guest';      emoji='🟠'; label='Guest';      break;
             case 'registration_approved':   iconClass='attendance'; emoji='✅'; label='Approved';   break;
@@ -848,7 +853,9 @@
 
         let detail = '';
         if (data.event === 'attendance') {
-            detail = `${data.attendance || 'Present'} · ${emotionStr(data.emotion)}`;
+            detail = `${data.attendance || 'Present'}`;
+        } else if (data.event === 'emotion') {
+            detail = `Mood updated: ${emotionStr(data.mood)}`;
         } else if (data.event === 'question') {
             detail = `<em>"${data.question}"</em><br>Topic: ${data.topic}`;
         } else if (data.event === 'guest') {
@@ -901,14 +908,14 @@
         if (!isTrackable(name)) return;
         if (!store.students[name]) {
             store.students[name] = {
-                attendance,
-                emotion,
+                attendance: attendance !== undefined ? attendance : 'Present',
+                emotion: emotion !== undefined ? emotion : 'Analyzing...',
                 questions: [],
                 isGuest: !!isGuest || name.startsWith('Guest_'),
             };
         } else {
-            store.students[name].attendance = attendance;
-            store.students[name].emotion = emotion;
+            if (attendance !== undefined) store.students[name].attendance = attendance;
+            if (emotion !== undefined) store.students[name].emotion = emotion;
         }
         renderSummaries();
     }
@@ -954,7 +961,7 @@
                         <span class="summary-name">${name.replace(/_/g, ' ')}</span>
                         <div class="summary-meta">
                             <span class="summary-attendance">${s.attendance}</span>
-                            <span class="summary-emotion">${emotionStr(s.emotion)}</span>
+                            <span class="summary-emotion">${s.emotion === 'Analyzing...' ? '⏳ Analyzing...' : emotionStr(s.emotion)}</span>
                         </div>
                     </div>
                 </div>
@@ -1021,10 +1028,13 @@
         if (evt.event === 'attendance') {
             const isGuest = (evt.student || '').startsWith('Guest_');
             if (evt.registered) {
-                upsertStudent(evt.student, evt.attendance, evt.emotion || 'Neutral');
+                upsertStudent(evt.student, evt.attendance, evt.emotion || 'Analyzing...');
             } else if (isGuest) {
-                upsertStudent(evt.student, evt.attendance || 'Guest', evt.emotion || 'Neutral', true);
+                upsertStudent(evt.student, evt.attendance || 'Guest', evt.emotion || 'Analyzing...', true);
             }
+        } else if (evt.event === 'emotion') {
+            const isGuest = (evt.student || '').startsWith('Guest_');
+            upsertStudent(evt.student, undefined, evt.mood, isGuest);
         } else if (evt.event === 'question') {
             addQuestion(evt);
             if (isTrackable(evt.student)) {

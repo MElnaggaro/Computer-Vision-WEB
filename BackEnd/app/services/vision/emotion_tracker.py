@@ -167,9 +167,11 @@ class EmotionTracker:
             result = self.detector.predict(face_crop)
             buf.push(result)
             buf.last_updated_frame = frame_count
-            logger.debug(
-                "Track %d emotion: %s (%.0f%%)", track_id,
-                result["label"], result["confidence"] * 100
+            sample_num = len(buf.buffer)
+            logger.info(
+                "🧠 Emotion sample %d/%d for track %d: %s (%.0f%%)",
+                sample_num, self.min_stable_samples, track_id,
+                result["label"], result["confidence"] * 100,
             )
 
         self._prune_stale(frame_count)
